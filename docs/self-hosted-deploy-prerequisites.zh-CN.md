@@ -50,7 +50,7 @@ Capgo CLI  ──HTTPS──► 同上 API 域名
 默认还会执行（可用环境变量关闭）：
 
 - `RUN_BOOTSTRAP_PLANS=true`：写入套餐表，否则**无法创建组织**
-- `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`：否则 **`capgo login` 会报 Invalid API key**（见 issues/008）
+- `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`：否则 **`capgo login` / `bundle upload` 会报 RPC 42501**（见 issues/008）
 - 若设置 `INIT_ADMIN_PASSWORD`：创建平台管理员（默认邮箱 `admin@local.com`）
 
 ---
@@ -428,7 +428,7 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 | 内容 | 环境变量 | 不执行时的现象 |
 | --- | --- | --- |
 | 套餐 `plans` | `RUN_BOOTSTRAP_PLANS=true`（默认） | 创建组织报 `cannot_get_plan` |
-| CLI 登录 RPC | `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`（默认） | `capgo login` 报 Invalid API key |
+| CLI 权限 RPC | `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`（默认） | `login` 报 Invalid API key；`upload` 报 `get_org_perm_for_apikey` 42501 |
 
 ### 8.3 平台管理员（建议首次就设）
 
@@ -481,7 +481,7 @@ bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
 | --- | --- | --- |
 | `RUN_DB_SEED` | `false` | `true` = 跑完整 seed（**会清测试用户数据，生产慎用**） |
 | `RUN_BOOTSTRAP_PLANS` | `true` | 写入 `plans` 表 |
-| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true` | 允许 CLI `login` |
+| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true` | 允许 CLI `login` / `upload`（`get_user_id`、`get_org_perm_for_apikey`） |
 | `INIT_ADMIN_ENABLED` | `true` | 配合 `INIT_ADMIN_PASSWORD` 创建管理员 |
 | `USE_LETSENCRYPT` | `false` | **未实现**，勿依赖 |
 
@@ -552,6 +552,8 @@ npx @capgo/cli@latest app list
 docker exec -i supabase-db psql -U postgres -d postgres -c "SELECT name, mau FROM public.plans ORDER BY mau;"
 docker exec -i supabase-db psql -U postgres -d postgres -c \
   "SELECT has_function_privilege('anon', 'public.get_user_id(text)', 'EXECUTE');"
+docker exec -i supabase-db psql -U postgres -d postgres -c \
+  "SELECT has_function_privilege('anon', 'public.get_org_perm_for_apikey(text,text)', 'EXECUTE');"
 ```
 
 ---
@@ -586,7 +588,8 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 | 005 | Studio 502 | **Nginx 用 127.0.0.1:54323**，勿写容器名 |
 | 006 | 控制台白屏 | 确认 translation；必要时硬刷新 |
 | 007 | 无法建组织 | 确认 `RUN_BOOTSTRAP_PLANS` 或手跑 bootstrap SQL |
-| 008 | CLI login 失败 | 确认 `RUN_BOOTSTRAP_CLI_ANON_GRANT` |
+| 008 | CLI login / upload 42501 | 确认 `RUN_BOOTSTRAP_CLI_ANON_GRANT` 或手跑 `self-hosted-bootstrap-cli-anon.sql` |
+| 009 | 其他 CLI RPC 42501 | 对照表 [issues/009](issues/009-CLI-anon-RPC权限对照表.md)；bootstrap 已批量 GRANT |
 
 ---
 

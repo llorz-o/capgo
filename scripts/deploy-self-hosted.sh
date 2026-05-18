@@ -151,7 +151,7 @@ SQL
       < "$CAPGO_REPO/supabase/self-hosted-bootstrap-plans.sql"
   fi
   if [[ "$RUN_BOOTSTRAP_CLI_ANON_GRANT" == "true" ]]; then
-    log "自托管 CLI：授予 anon 执行 get_user_id(text)（capgo login）"
+    log "自托管 CLI：授予 anon 执行 CLI 所需 RPC（login、upload、org 等，见 issues/009）"
     docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
       < "$CAPGO_REPO/supabase/self-hosted-bootstrap-cli-anon.sql"
   fi

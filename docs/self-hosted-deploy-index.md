@@ -25,7 +25,7 @@
 | Edge Functions / `deno.capgo.json` | §7 |
 | Nginx 反代 | §4 |
 | 验证清单 | §11 |
-| Capgo CLI `login` / `capacitor.config` | §10.3；issues/008 |
+| Capgo CLI `login` / `capacitor.config` | §10.3；issues/008、009 |
 | **Capgo CLI bundle 上传** | **§12.1** |
 
 ## 仓库内脚本与补丁
@@ -50,7 +50,7 @@
 | --- | --- | --- |
 | `RUN_DB_SEED` | `false` | 完整 `seed.sql`（会清空测试用户，生产慎用） |
 | `RUN_BOOTSTRAP_PLANS` | `true` | 写入 `public.plans`（创建组织必需） |
-| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true` | 供 `@capgo/cli login`（见 issues/008） |
+| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true` | 供 `@capgo/cli login` / `upload`（见 issues/008） |
 | `INIT_ADMIN_PASSWORD` | 空 | 设置后创建/更新平台管理员 |
 | `SKIP_GIT_PULL` | `false` | 本地未推送代码时设为 `true` |
 | `USE_LETSENCRYPT` | `false` | **未实现**，证书须手工配置 |
