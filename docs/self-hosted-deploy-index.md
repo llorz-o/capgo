@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | **全栈部署指南** | [`/root/SELF_HOSTED_FULL_STACK.zh-CN.md`](/root/SELF_HOSTED_FULL_STACK.zh-CN.md) | 已验证的 Supabase Docker + Capgo 完整流程；**执行部署前必须先读** |
 | **一键脚本前置条件（手工步骤）** | [`self-hosted-deploy-prerequisites.zh-CN.md`](self-hosted-deploy-prerequisites.zh-CN.md) | **`deploy-self-hosted.sh` 不会自动完成的事项**，须先配置再跑脚本 |
+| **组件 / 镜像版本锁定** | [`self-hosted-version-pins.zh-CN.md`](self-hosted-version-pins.zh-CN.md) | Docker、Edge、Capacitor、CLI 等已验证版本，升级前必读 |
 | **本仓库部署计划** | Cursor 计划 `capgo_自托管部署_8ea0d250.plan.md` | 与本机域名、路径、验收清单对齐的执行清单 |
 | **Capgo README** | 仓库根目录 `README.md` | 自托管环境变量、Functions、Bento 等 |
 
@@ -32,6 +33,7 @@
 | 资源 | 路径 |
 | --- | --- |
 | 一键部署脚本 | [`scripts/deploy-self-hosted.sh`](../scripts/deploy-self-hosted.sh) |
+| 版本采集脚本 | [`scripts/collect-self-hosted-versions.sh`](../scripts/collect-self-hosted-versions.sh) |
 | 初始化平台管理员 | [`scripts/init-self-hosted-admin.sh`](../scripts/init-self-hosted-admin.sh) |
 | **部署前置（脚本不涵盖）** | [`self-hosted-deploy-prerequisites.zh-CN.md`](self-hosted-deploy-prerequisites.zh-CN.md) |
 | Compose 补丁 | [`scripts/patch-supabase-compose.py`](../scripts/patch-supabase-compose.py) |

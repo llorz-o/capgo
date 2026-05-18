@@ -8,6 +8,7 @@
 | 全栈部署指南（权威、含 Nginx 完整示例） | [`/root/SELF_HOSTED_FULL_STACK.zh-CN.md`](/root/SELF_HOSTED_FULL_STACK.zh-CN.md) |
 | 一键部署脚本 | [`scripts/deploy-self-hosted.sh`](../scripts/deploy-self-hosted.sh) |
 | 部署索引 | [`self-hosted-deploy-index.md`](self-hosted-deploy-index.md) |
+| **组件 / 镜像版本锁定** | [`self-hosted-version-pins.zh-CN.md`](self-hosted-version-pins.zh-CN.md) |
 | 踩坑记录 | [`issues/`](issues/) |
 
 ---
@@ -441,6 +442,19 @@ export INIT_ADMIN_PASSWORD='你的强密码'
 脚本会调用 `init-self-hosted-admin.sh`：创建 Auth 用户、`public.users` 行、Vault `admin_users`。
 
 若不设 `INIT_ADMIN_PASSWORD`，脚本会跳过，你需要自己在控制台注册（且要处理邮件确认问题）。
+
+---
+
+## 8.5 版本锁定（升级前建议阅读）
+
+单独 `docker compose pull` 或 `git pull` 可能只升级某一个组件，导致预签名上传、CLI 登录、迁移与 Edge 不兼容。
+
+- 已验证版本表：[**self-hosted-version-pins.zh-CN.md**](self-hosted-version-pins.zh-CN.md)
+- 在服务器上刷新快照：
+
+```bash
+bash "$CAPGO_REPO/scripts/collect-self-hosted-versions.sh"
+```
 
 ---
 
