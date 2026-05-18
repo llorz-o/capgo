@@ -324,13 +324,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/forgot_password': RouteRecordInfo<
-      '/forgot_password',
-      '/forgot_password',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/invitation': RouteRecordInfo<
       '/invitation',
       '/invitation',
@@ -362,13 +355,6 @@ declare module 'vue-router/auto-routes' {
     '/onboarding/set_password': RouteRecordInfo<
       '/onboarding/set_password',
       '/onboarding/set_password',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/register': RouteRecordInfo<
-      '/register',
-      '/register',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -792,12 +778,6 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/forgot_password.vue': {
-      routes:
-        | '/forgot_password'
-      views:
-        | never
-    }
     'src/pages/invitation.vue': {
       routes:
         | '/invitation'
@@ -825,12 +805,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/onboarding/set_password.vue': {
       routes:
         | '/onboarding/set_password'
-      views:
-        | never
-    }
-    'src/pages/register.vue': {
-      routes:
-        | '/register'
       views:
         | never
     }

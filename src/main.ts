@@ -124,7 +124,7 @@ window.addEventListener('vite:preloadError', (event) => {
   handleChunkError(message)
 })
 
-const guestPath = ['/login', '/delete_account', '/confirm-signup', '/forgot_password', '/resend_email', '/onboarding', '/register', '/invitation', '/scan', '/sso-callback']
+const guestPath = ['/login', '/delete_account', '/confirm-signup', '/resend_email', '/onboarding', '/invitation', '/scan', '/sso-callback']
 
 getRemoteConfig()
 const app = createApp(App)
@@ -145,6 +145,10 @@ const newRoutes = routes.map((route) => {
 const router = createRouter({
   routes: [
     { path: '/', redirect: '/login' },
+    { path: '/register', redirect: '/login' },
+    { path: '/register/', redirect: '/login' },
+    { path: '/forgot_password', redirect: '/login' },
+    { path: '/forgot_password/', redirect: '/login' },
     // Canonical apps list route
     { path: '/app', redirect: '/apps' },
     { path: '/settings/plans', redirect: '/settings/organization/plans' },

@@ -14,7 +14,7 @@ import iconEmail from '~icons/oui/email?raw'
 import iconPassword from '~icons/ph/key?raw'
 import mfaIcon from '~icons/simple-icons/2fas?raw'
 import { hideLoader } from '~/services/loader'
-import { autoAuth, defaultApiHost, hashEmail, useSupabase } from '~/services/supabase'
+import { autoAuth, defaultApiHost, hashEmail, isLocal, useSupabase } from '~/services/supabase'
 import { openSupport } from '~/services/support'
 
 const route = useRoute('/login')
@@ -22,7 +22,12 @@ const supabase = useSupabase()
 const isLoading = ref(false)
 const isMobile = ref(Capacitor.isNativePlatform())
 const turnstileToken = ref('')
-const captchaKey = ref(import.meta.env.VITE_CAPTCHA_KEY)
+// Self-hosted: no Cloudflare Turnstile site key for custom domains — skip captcha UI.
+const captchaKey = ref(
+  isLocal(import.meta.env.VITE_SUPABASE_URL as string)
+    ? ''
+    : (import.meta.env.VITE_CAPTCHA_KEY || ''),
+)
 const statusAuth: Ref<'email' | 'credentials' | '2fa'> = ref('email')
 const mfaLoginFactor: Ref<Factor | null> = ref(null)
 const mfaChallengeId: Ref<string> = ref('')
@@ -98,8 +103,6 @@ const authGhostButtonClass = [
   'hover:bg-slate-200/75 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800/85 dark:hover:text-white',
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--color-azure-500)]',
 ].join(' ')
-
-const registerUrl = window.location.host === 'console.capgo.app' ? 'https://capgo.app/register/' : `/register/`
 
 function clearCaptchaInitTimeout() {
   if (captchaInitTimeout) {
@@ -773,18 +776,6 @@ onMounted(checkLogin)
                         </div>
                       </div>
 
-                      <div :class="authPanelClass">
-                        <span class="text-slate-500 dark:text-slate-400">
-                          {{ t('dont-have-an-account') }}
-                        </span>
-                        <a
-                          :href="registerUrl"
-                          data-test="register"
-                          :class="authInlineLinkClass"
-                        >
-                          {{ t('create-a-free-account') }}
-                        </a>
-                      </div>
                     </div>
                   </FormKit>
                 </div>
@@ -921,24 +912,10 @@ onMounted(checkLogin)
                           </div>
                         </div>
 
-                        <div :class="authPanelClass">
+                        <div class="text-center">
                           <button type="button" data-test="back-to-email" class="appearance-none" :class="authInlineLinkClass" @click="goBackToEmail">
                             {{ t('go-back') }}
                           </button>
-                          <a
-                            :href="registerUrl"
-                            data-test="register"
-                            :class="authInlineLinkClass"
-                          >
-                            {{ t('create-a-free-account') }}
-                          </a>
-                          <router-link
-                            to="/forgot_password"
-                            data-test="forgot-password"
-                            :class="authInlineLinkClass"
-                          >
-                            {{ t('forgot') }} {{ t('password') }} ?
-                          </router-link>
                         </div>
                       </div>
                     </FormKit>

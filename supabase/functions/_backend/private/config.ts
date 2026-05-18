@@ -9,7 +9,11 @@ app.use('/', useCors)
 
 app.get('/', (c) => {
   return c.json({
-    supaHost: existInEnv(c, 'SUPABASE_REPLICATE_URL') ? getEnv(c, 'SUPABASE_REPLICATE_URL') : getEnv(c, 'SUPABASE_URL'),
+    supaHost: existInEnv(c, 'SUPABASE_REPLICATE_URL')
+      ? getEnv(c, 'SUPABASE_REPLICATE_URL')
+      : existInEnv(c, 'SUPABASE_PUBLIC_URL')
+        ? getEnv(c, 'SUPABASE_PUBLIC_URL')
+        : getEnv(c, 'SUPABASE_URL'),
     supbaseId: getEnv(c, 'SUPABASE_URL')?.split('//')[1].split('.')[0].split(':')[0],
     supaKey: getEnv(c, 'SUPABASE_ANON_KEY'),
     stripeEnabled: isStripeConfigured(c),

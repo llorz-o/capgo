@@ -283,14 +283,6 @@ onMounted (() => {
         />
 
         <div>
-          <div class="flex justify-end">
-            <router-link
-              to="/forgot_password"
-              class="text-sm font-medium text-orange-500 transition-all duration-200 hover:text-orange-600 hover:underline focus:text-orange-600"
-            >
-              {{ t('forgot') }} {{ t('password') }} ?
-            </router-link>
-          </div>
           <FormKit
             id="passwordInput"
             type="password"

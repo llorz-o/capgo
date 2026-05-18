@@ -161,7 +161,7 @@ async function submitForm() {
 }
 
 function joinCapgo() {
-  window.location.href = 'https://capgo.app/register/'
+  window.location.href = '/login'
 }
 
 // Open ToS and Privacy Policy in new tabs

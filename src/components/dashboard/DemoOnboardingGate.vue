@@ -26,7 +26,7 @@ const shouldShowDemoOnNoApps = computed(() => {
   if (path.startsWith('/admin'))
     return false
 
-  if (path === '/login' || path === '/register' || path === '/forgot_password' || path === '/resend_email' || path === '/onboarding' || path === '/scan')
+  if (path === '/login' || path === '/resend_email' || path === '/onboarding' || path === '/scan')
     return false
 
   return shouldForceShowDemoOnboarding.value

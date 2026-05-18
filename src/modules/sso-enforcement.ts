@@ -11,10 +11,8 @@ const SSO_CHECK_CACHE_TTL = 5 * 60 * 1000
 
 const PUBLIC_ROUTES = [
   '/login',
-  '/register',
   '/sso-callback',
   '/confirm-signup',
-  '/forgot_password',
   '/onboarding/set_password',
   '/accountDisabled',
 ]
