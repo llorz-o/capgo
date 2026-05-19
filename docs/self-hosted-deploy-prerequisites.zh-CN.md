@@ -61,7 +61,8 @@ export SUPABASE_PROJECT_DIR=/root/supabase-project
 
 > **与脚本的关系**：若 `SUPABASE_PROJECT_DIR` 里还没有 `docker-compose.yml`，`deploy-self-hosted.sh` 会尝试 `git clone` 官方仓库的 `docker/` 子目录到该路径。
 >
-> **版本锁定**：`deploy-self-hosted.sh` 默认已 pin `SUPABASE_DOCKER_REF` / `CAPGO_REF`（与 [self-hosted-version-pins.zh-CN.md §2.0](self-hosted-version-pins.zh-CN.md#20-上游-commit-锁定强烈建议生产填具体-sha) 一致）。跟上游 Supabase 最新可 `export SUPABASE_DOCKER_REF=master`；跟 Capgo `main` 最新可 `export CAPGO_REF=main`。脚本会把实际 Supabase SHA 写到 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`。密钥与域名相关变量见 **§6**。
+> **版本锁定**：`deploy-self-hosted.sh` 默认已 pin **Supabase 上游** `SUPABASE_DOCKER_REF`（与 [self-hosted-version-pins.zh-CN.md §2.0](self-hosted-version-pins.zh-CN.md#20-上游-commit-锁定强烈建议生产填具体-sha) 一致），跟踪上游 Supabase 最新可 `export SUPABASE_DOCKER_REF=master`（不推荐生产）。  
+> 本仓库（Capgo fork）**不**单独 pin 自身 ref —— 一键脚本就在本仓库内，跟你 checkout 的分支/commit 一起前进，且应始终兼容当前 Supabase ref。脚本会把实际 Supabase SHA 写到 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`。密钥与域名相关变量见 **§6**。
 
 ### 0.3 如何验证
 
@@ -657,14 +658,14 @@ export WEB_ROOT=/var/www/capgo/dist
 export INIT_ADMIN_EMAIL=admin@local.com
 export INIT_ADMIN_PASSWORD='你的强密码'   # 勿提交 git；首次部署后立刻改
 
-# === 版本锁定（脚本内已有默认 pin，与 version-pins §2.0 一致；以下为可选覆盖）===
-# 跟踪上游 Supabase 最新：export SUPABASE_DOCKER_REF=master
-# 跟 Capgo main 分支最新：export CAPGO_REF=main
+# === Supabase 上游版本锁定（脚本内已 pin，与 version-pins §2.0 一致；以下为可选覆盖）===
+# 跟踪上游 Supabase 最新：export SUPABASE_DOCKER_REF=master  (不推荐生产)
+# 本仓库（Capgo fork）不单独 pin：直接在部署机 git checkout <分支/SHA> 即可
 # 已部署的 Supabase SHA 会落盘到 $SUPABASE_PROJECT_DIR/.supabase-docker-ref，cleanup 默认保留
 
 # === 代码同步策略 ===
-# true = 跳过 `git fetch && git checkout $CAPGO_REF && git pull`；
-# 当 Capgo 仓库里有本地未推送的改动（例如你刚改了 migrations 或 functions）时务必开启
+# true = 跳过 `git fetch && git pull`（按当前 checkout 的分支拉取）；
+# 当本仓库里有本地未推送的改动（例如你刚改了 migrations 或 functions）时务必开启
 export SKIP_GIT_PULL=true
 
 bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
@@ -697,7 +698,6 @@ bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
 | `INIT_ADMIN_ENABLED`           | `true`  | 配合 `INIT_ADMIN_PASSWORD` 创建管理员                                     |
 | `POSTGRES_DIRECT_PORT`         | `54322` | 宿主机直连 Postgres 端口（`${POSTGRES_PORT}` 是 Supavisor 池）                |
 | `SUPABASE_DOCKER_REF`          | `09bbb7c323b017cda034ab307fe83edf2cbd0619` | Supabase `docker/` 的 commit；`master` 可跟踪上游；与 version-pins §2.0 同步 bump |
-| `CAPGO_REF`                    | `955814dd39c66090958f41208a75a37c52f93e3c` | Capgo checkout 的 ref；`main` 可跟分支最新；与 version-pins 元数据同步 bump        |
 | `USE_LETSENCRYPT`              | `false` | **未实现**，勿依赖                                                        |
 
 

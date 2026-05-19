@@ -8,7 +8,7 @@
 #   POSTGRES_DIRECT_PORT (默认 54322，直连 Postgres；勿与 Supavisor 的 ${POSTGRES_PORT} 混淆)
 #   SUPABASE_DOCKER_REF  Supabase docker/ 的 commit SHA / tag / branch；默认见下方 pin（与 version-pins §2.0 一致）
 #                        设为 `master` 可跟踪上游分支；勿设空字符串（bash 会回落到默认 pin）
-#   CAPGO_REF            Capgo 仓库 checkout 的 ref；默认见下方 pin（本仓库已验证提交）；`main` 可跟分支最新
+#                        本仓库（Capgo fork）的代码应**始终**兼容该 ref，故无对应 CAPGO_REF
 #   RUN_DB_PUSH RUN_DB_SEED RUN_BOOTSTRAP_PLANS RUN_BOOTSTRAP_CLI_ANON_GRANT
 #   INIT_ADMIN_* SECRETS_ENV_FILE SKIP_GIT_PULL USE_LETSENCRYPT (certbot not implemented)
 set -euo pipefail
@@ -22,11 +22,12 @@ WEB_ROOT="${WEB_ROOT:-/var/www/capgo/dist}"
 USE_LETSENCRYPT="${USE_LETSENCRYPT:-false}"
 SKIP_SUPABASE_CLONE="${SKIP_SUPABASE_CLONE:-false}"
 SKIP_GIT_PULL="${SKIP_GIT_PULL:-false}"
-# 版本锁定：默认 pin 与 docs/self-hosted-version-pins.zh-CN.md §2.0 一致；升级时 bump 三处（脚本默认、文档、本提交）
+# Supabase 版本锁定：脚本默认与 docs/self-hosted-version-pins.zh-CN.md §2.0 一致；
+# 升级时 bump 两处（脚本默认 + 文档）。本仓库自身的代码无 pin —— 一键脚本就在本仓库内，
+# 与你 checkout 的任一分支/commit 一起前进，且应**始终**保持兼容当前 SUPABASE_DOCKER_REF。
 SUPABASE_DOCKER_REF="${SUPABASE_DOCKER_REF:-09bbb7c323b017cda034ab307fe83edf2cbd0619}"
 SUPABASE_DOCKER_REPO="${SUPABASE_DOCKER_REPO:-https://github.com/supabase/supabase.git}"
 SUPABASE_REF_FILE="${SUPABASE_REF_FILE:-$SUPABASE_PROJECT_DIR/.supabase-docker-ref}"
-CAPGO_REF="${CAPGO_REF:-955814dd39c66090958f41208a75a37c52f93e3c}"
 RUN_DB_SEED="${RUN_DB_SEED:-false}"
 RUN_BOOTSTRAP_PLANS="${RUN_BOOTSTRAP_PLANS:-true}"
 # 恢复 anon 对 get_user_id(text) 的执行权，供 @capgo/cli login（见 supabase/self-hosted-bootstrap-cli-anon.sql）
@@ -380,10 +381,15 @@ main() {
   preflight
   [[ -d "$CAPGO_REPO" ]] || die "Capgo 仓库不存在: $CAPGO_REPO"
   if [[ "$SKIP_GIT_PULL" != "true" ]]; then
-    log "同步 Capgo 仓库到 ref=$CAPGO_REF"
-    (cd "$CAPGO_REPO" && git fetch --tags origin && git checkout "$CAPGO_REF" \
-      && { git rev-parse --verify --quiet "$CAPGO_REF^{commit}" >/dev/null && \
-           git symbolic-ref -q HEAD >/dev/null && git pull --ff-only origin "$CAPGO_REF" || true; })
+    # 跟当前 checkout 的分支走；若处于 detached HEAD（如手工 checkout 到 SHA/tag）则不 pull
+    local branch
+    branch="$(git -C "$CAPGO_REPO" symbolic-ref --short -q HEAD || true)"
+    if [[ -n "$branch" ]]; then
+      log "同步 Capgo 仓库分支 $branch"
+      (cd "$CAPGO_REPO" && git fetch --tags origin && git pull --ff-only origin "$branch")
+    else
+      log "Capgo 仓库当前 detached HEAD（$(git -C "$CAPGO_REPO" rev-parse --short HEAD)），跳过 git pull"
+    fi
     (cd "$CAPGO_REPO" && bun install)
   fi
   ensure_supabase_project
