@@ -2,7 +2,7 @@
 
 ## 背景
 
-`supa.llorz.online` 的 `location /` 需反代 Supabase Studio（全栈 **§4**、附录 A.3.2）。
+`supa.example.com` 的 `location /` 需反代 Supabase Studio（全栈 **§4**、附录 A.3.2）。
 
 ## 现象
 
@@ -27,7 +27,7 @@ Nginx 进程运行在**宿主机**上时，`127.0.0.11` 的 Docker 嵌入式 DNS
 ## 验证方式
 
 ```bash
-curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/ -H 'Host: supa.llorz.online'
+curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/ -H 'Host: supa.example.com'
 ```
 
 期望 200 或 307（重定向），非 502。
@@ -35,5 +35,5 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/ -H 'Host: supa.llor
 ## 关联文件
 
 - `/root/supabase-project/docker-compose.override.yml`
-- `/etc/nginx/sites-enabled/supa.llorz.online`
+- `/etc/nginx/sites-enabled/supa.example.com`
 - 全栈文档 **§4**

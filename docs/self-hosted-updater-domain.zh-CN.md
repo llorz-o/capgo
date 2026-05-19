@@ -24,7 +24,7 @@
 | Supabase API / Studio | `supa.example.com` | 开发者浏览器 + `@capgo/cli` | 反代 Kong + Studio（全路径） |
 | **客户端更新 API（新）** | `update.example.com` | **手机 App / native 客户端** | **仅** `/functions/v1/{updates,stats,channel_self,ok,latency}` |
 
-> **本机当前环境示例**：`capgo.llorz.online` / `supa.llorz.online` / `update.llorz.online`
+> **本机当前环境示例**：`capgo.example.com` / `supa.example.com` / `update.example.com`
 
 ### 为什么客户端域名不暴露其他路径
 

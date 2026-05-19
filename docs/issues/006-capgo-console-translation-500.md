@@ -2,14 +2,14 @@
 
 ## 现象
 
-- `https://supa.llorz.online/functions/v1/ok` 正常
-- `https://capgo.llorz.online/` 在浏览器中长时间停在 `#app-loader` 或看似无响应
-- 服务器侧 `curl https://capgo.llorz.online/` 返回 **200**
+- `https://supa.example.com/functions/v1/ok` 正常
+- `https://capgo.example.com/` 在浏览器中长时间停在 `#app-loader` 或看似无响应
+- 服务器侧 `curl https://capgo.example.com/` 返回 **200**
 
 ## 原因
 
 1. 控制台在加载非英语语言时会请求  
-   `POST {VITE_API_HOST}/translation/messages`（自托管为 `https://supa.llorz.online/functions/v1/translation/messages`）。
+   `POST {VITE_API_HOST}/translation/messages`（自托管为 `https://supa.example.com/functions/v1/translation/messages`）。
 2. 自托管仅同步了 `ok/`、`bundle/` 等子目录，**没有** `translation/` worker，主路由 `main/index.ts` 创建 worker 失败：
    ```
    InvalidWorkerCreation: could not find an appropriate entrypoint
@@ -28,15 +28,15 @@
 ## 验证
 
 ```bash
-curl -sk -X POST "https://supa.llorz.online/functions/v1/translation/messages" \
+curl -sk -X POST "https://supa.example.com/functions/v1/translation/messages" \
   -H "Content-Type: application/json" \
   -d '{"targetLanguage":"zh-cn"}' | jq .status
 
-curl -sk "https://supa.llorz.online/functions/v1/private/config" \
-  -H "Origin: https://capgo.llorz.online" | jq .supaHost
+curl -sk "https://supa.example.com/functions/v1/private/config" \
+  -H "Origin: https://capgo.example.com" | jq .supaHost
 ```
 
-期望：`status` 为 `"ready"`，`supaHost` 为公网 `https://supa.llorz.online`。
+期望：`status` 为 `"ready"`，`supaHost` 为公网 `https://supa.example.com`。
 
 ## 若仍无响应
 

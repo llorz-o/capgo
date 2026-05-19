@@ -75,6 +75,6 @@ python3 "$CAPGO_REPO/scripts/patch-supabase-compose.py" --project-dir "$SUPABASE
 
 | 用途 | 域名 |
 | --- | --- |
-| Capgo 控制台 | `capgo.llorz.online` |
-| Supabase API / Studio / CLI 上传 | `supa.llorz.online` |
-| 客户端 OTA 更新 API（external bundle） | `update.llorz.online`（规划中，配置见 [`self-hosted-updater-domain.zh-CN.md`](self-hosted-updater-domain.zh-CN.md)） |
+| Capgo 控制台 | `capgo.example.com` |
+| Supabase API / Studio / CLI 上传 | `supa.example.com` |
+| 客户端 OTA 更新 API（external bundle） | `update.example.com`（规划中，配置见 [`self-hosted-updater-domain.zh-CN.md`](self-hosted-updater-domain.zh-CN.md)） |

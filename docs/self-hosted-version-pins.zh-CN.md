@@ -7,7 +7,7 @@
 | **记录日期** | 2026-05-18 |
 | **Capgo 仓库提交** | `fb3217342`（`main`） |
 | **Capgo 应用版本** | `12.139.0`（`package.json`） |
-| **部署环境示例** | `capgo.llorz.online` / `supa.llorz.online` |
+| **部署环境示例** | `capgo.example.com` / `supa.example.com` |
 | **Supabase 项目目录** | `/root/supabase-project` |
 
 升级任一区块前，请先阅读文末 [升级原则](#升级原则)，并在测试环境完整跑通 [验收清单](self-hosted-deploy-prerequisites.zh-CN.md#10-部署后验收建议逐项打勾)。

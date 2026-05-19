@@ -13,8 +13,8 @@ set -euo pipefail
 # ============ 可配置参数 ============
 CAPGO_REPO="${CAPGO_REPO:-/root/capgos/capgo}"
 SUPABASE_PROJECT_DIR="${SUPABASE_PROJECT_DIR:-/root/supabase-project}"
-CONSOLE_DOMAIN="${CONSOLE_DOMAIN:-capgo.llorz.online}"
-SUPABASE_DOMAIN="${SUPABASE_DOMAIN:-supa.llorz.online}"
+CONSOLE_DOMAIN="${CONSOLE_DOMAIN:-capgo.example.com}"
+SUPABASE_DOMAIN="${SUPABASE_DOMAIN:-supa.example.com}"
 WEB_ROOT="${WEB_ROOT:-/var/www/capgo/dist}"
 USE_LETSENCRYPT="${USE_LETSENCRYPT:-false}"
 SKIP_SUPABASE_CLONE="${SKIP_SUPABASE_CLONE:-false}"

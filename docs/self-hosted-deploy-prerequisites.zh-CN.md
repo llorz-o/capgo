@@ -346,7 +346,7 @@ curl -sk https://supa.example.com/functions/v1/ok
 
 ### 5.5 本机参考配置（直接复制改域名 / 证书）
 
-> 这两份是当前部署机上**已验证**可用的站点配置。占位说明：把 `capgo.llorz.online` / `supa.llorz.online` 换成你的域名；snakeoil 证书路径换成 certbot 自动写入的 Let's Encrypt 证书（`/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`）。
+> 这两份是当前部署机上**已验证**可用的站点配置。占位说明：把 `capgo.example.com` / `supa.example.com` 换成你的域名；snakeoil 证书路径换成 certbot 自动写入的 Let's Encrypt 证书（`/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`）。
 
 #### 5.5.1 `capgo.<domain>.conf`（控制台静态站点）
 
@@ -355,14 +355,14 @@ curl -sk https://supa.example.com/functions/v1/ok
 ```nginx
 server {
     listen 80;
-    server_name capgo.llorz.online;
+    server_name capgo.example.com;
 
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name capgo.llorz.online;
+    server_name capgo.example.com;
 
     # 临时自签证书；生产请换成 Let's Encrypt
     ssl_certificate     /etc/ssl/certs/ssl-cert-snakeoil.pem;
@@ -384,14 +384,14 @@ server {
 ```nginx
 server {
     listen 80;
-    server_name supa.llorz.online;
+    server_name supa.example.com;
 
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name supa.llorz.online;
+    server_name supa.example.com;
 
     ssl_certificate     /etc/ssl/certs/ssl-cert-snakeoil.pem;
     ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
