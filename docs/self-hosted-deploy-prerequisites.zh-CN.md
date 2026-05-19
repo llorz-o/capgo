@@ -283,6 +283,8 @@ proxy_set_header X-Forwarded-Port  443;
 
 **完整可复制示例**见全栈文档 [**§4 反向代理**](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#4-反向代理nginx与常见故障) 与 [**附录 A.3**](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#附录-a示例配置脱敏)。
 
+> **多域名场景**：若客户端 OTA 走独立域名（external bundle），见 [`self-hosted-updater-domain.zh-CN.md`](self-hosted-updater-domain.zh-CN.md)，本文 §5 仍是基础。
+
 **检查**：
 
 ```bash
