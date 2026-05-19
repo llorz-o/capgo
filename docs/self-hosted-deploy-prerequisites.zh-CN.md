@@ -61,7 +61,7 @@ export SUPABASE_PROJECT_DIR=/root/supabase-project
 
 > **与脚本的关系**：若 `SUPABASE_PROJECT_DIR` 里还没有 `docker-compose.yml`，`deploy-self-hosted.sh` 会尝试 `git clone` 官方仓库的 `docker/` 子目录到该路径。
 >
-> **版本锁定**：脚本支持 `SUPABASE_DOCKER_REF` 环境变量来指定要 checkout 的 commit / tag；留空 = 跟 `master` HEAD（**不可重建**），生产强烈建议先在测试机拿到一个验证过的 SHA，写进 [self-hosted-version-pins.zh-CN.md §2.0](self-hosted-version-pins.zh-CN.md#20-上游-commit-锁定强烈建议生产填具体-sha)。脚本会把实际使用的 SHA 写到 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`。密钥与域名相关变量见 **§6**。
+> **版本锁定**：`deploy-self-hosted.sh` 默认已 pin `SUPABASE_DOCKER_REF` / `CAPGO_REF`（与 [self-hosted-version-pins.zh-CN.md §2.0](self-hosted-version-pins.zh-CN.md#20-上游-commit-锁定强烈建议生产填具体-sha) 一致）。跟上游 Supabase 最新可 `export SUPABASE_DOCKER_REF=master`；跟 Capgo `main` 最新可 `export CAPGO_REF=main`。脚本会把实际 Supabase SHA 写到 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`。密钥与域名相关变量见 **§6**。
 
 ### 0.3 如何验证
 
@@ -657,12 +657,10 @@ export WEB_ROOT=/var/www/capgo/dist
 export INIT_ADMIN_EMAIL=admin@local.com
 export INIT_ADMIN_PASSWORD='你的强密码'   # 勿提交 git；首次部署后立刻改
 
-# === 版本锁定（生产强烈建议）===
-# Supabase 官方 docker/ 仓库的 commit SHA / tag；留空 = master HEAD（不可重建）
-# 已部署的 ref 也会落盘到 $SUPABASE_PROJECT_DIR/.supabase-docker-ref，cleanup 默认保留
-export SUPABASE_DOCKER_REF=<填一个已验证的 commit SHA>
-# 你 fork 的 Capgo 仓库要 checkout 的 ref（默认 main；可填 tag / SHA 固定生产）
-export CAPGO_REF=main
+# === 版本锁定（脚本内已有默认 pin，与 version-pins §2.0 一致；以下为可选覆盖）===
+# 跟踪上游 Supabase 最新：export SUPABASE_DOCKER_REF=master
+# 跟 Capgo main 分支最新：export CAPGO_REF=main
+# 已部署的 Supabase SHA 会落盘到 $SUPABASE_PROJECT_DIR/.supabase-docker-ref，cleanup 默认保留
 
 # === 代码同步策略 ===
 # true = 跳过 `git fetch && git checkout $CAPGO_REF && git pull`；
@@ -698,8 +696,8 @@ bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
 | `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true`  | 允许 CLI `login` / `upload`（`get_user_id`、`get_org_perm_for_apikey`） |
 | `INIT_ADMIN_ENABLED`           | `true`  | 配合 `INIT_ADMIN_PASSWORD` 创建管理员                                     |
 | `POSTGRES_DIRECT_PORT`         | `54322` | 宿主机直连 Postgres 端口（`${POSTGRES_PORT}` 是 Supavisor 池）                |
-| `SUPABASE_DOCKER_REF`          | _空_     | Supabase docker/ 的 commit/tag；空 = master HEAD（**不可重建**，生产应填）       |
-| `CAPGO_REF`                    | `main`  | Capgo 仓库 checkout 的 ref；可填 tag / SHA 固定生产                          |
+| `SUPABASE_DOCKER_REF`          | `09bbb7c323b017cda034ab307fe83edf2cbd0619` | Supabase `docker/` 的 commit；`master` 可跟踪上游；与 version-pins §2.0 同步 bump |
+| `CAPGO_REF`                    | `955814dd39c66090958f41208a75a37c52f93e3c` | Capgo checkout 的 ref；`main` 可跟分支最新；与 version-pins 元数据同步 bump        |
 | `USE_LETSENCRYPT`              | `false` | **未实现**，勿依赖                                                        |
 
 

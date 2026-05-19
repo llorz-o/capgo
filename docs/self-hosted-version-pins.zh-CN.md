@@ -4,8 +4,8 @@
 
 | 元数据 | 值 |
 | --- | --- |
-| **记录日期** | 2026-05-18 |
-| **Capgo 仓库提交** | `fb3217342`（`main`） |
+| **记录日期** | 2026-05-19 |
+| **Capgo 仓库提交** | `955814dd39c66090958f41208a75a37c52f93e3c`（`deploy-self-hosted.sh` 默认 `CAPGO_REF`） |
 | **Capgo 应用版本** | `12.139.0`（`package.json`） |
 | **部署环境示例** | `capgo.example.com` / `supa.example.com` |
 | **Supabase 项目目录** | `/root/supabase-project` |
@@ -51,13 +51,11 @@ bash "$CAPGO_REPO/scripts/collect-self-hosted-versions.sh"
 | 项 | 值 |
 | --- | --- |
 | **Supabase docker/ 仓库** | `https://github.com/supabase/supabase.git` |
-| **当前已部署 ref** | _<填部署机 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref` 内容>_ |
-| **此 ref 抓取日期** | _<YYYY-MM-DD>_ |
+| **当前已部署 ref（默认 pin）** | `09bbb7c323b017cda034ab307fe83edf2cbd0619`（`deploy-self-hosted.sh` 默认 `SUPABASE_DOCKER_REF`；与 `master` HEAD 2026-05-19 一致） |
+| **此 ref 抓取日期** | 2026-05-19 |
 
-- 一键脚本会读 `SUPABASE_DOCKER_REF`：留空 = 抓 `master` HEAD（**不可重建**），填具体 commit SHA / tag = 可重建快照。
-- 首次部署完成后，脚本会把实际使用的 commit SHA 写入 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`，**请把它复制到本表上方**。
-- 锁定后，无论以后上游 master 怎么变，重跑部署都会装到同一组 compose / 镜像 tag / 初始化 SQL。
-- `cleanup-self-hosted.sh` 默认保留该文件；`--wipe-env` 才会一并删除（要求下次部署重新按 `SUPABASE_DOCKER_REF` 抓取）。
+- 一键脚本默认 `SUPABASE_DOCKER_REF` / `CAPGO_REF` 与本表一致；跟分支开发可 `export CAPGO_REF=main`；跟踪上游 Supabase 最新可 `export SUPABASE_DOCKER_REF=master`（不推荐生产）。
+- 首次部署完成后，脚本会把实际 Supabase SHA 写到 `$SUPABASE_PROJECT_DIR/.supabase-docker-ref`，若与上表不同请更新本表。
 
 下面的镜像表「随这一行 SHA 一起被锁定」；只升级镜像 tag 而不更新 `SUPABASE_DOCKER_REF` 会导致 compose 文件结构变化，`patch-supabase-compose.py` 可能命中不上，部署日志会出现 `WARN: 以下补丁未命中` 警告。
 
