@@ -99,12 +99,21 @@ discover() {
     fi
   done
 
-  log "--- .env 处理策略 ---"
+  log "--- .env / 版本锁文件处理策略 ---"
   if [[ -f "$SUPABASE_PROJECT_DIR/.env" ]]; then
     if [[ "$WIPE_ENV" == "true" ]]; then
       log "  WILL DELETE $SUPABASE_PROJECT_DIR/.env (--wipe-env)"
     else
       log "  保留 $SUPABASE_PROJECT_DIR/.env（如需重新生成密钥请加 --wipe-env）"
+    fi
+  fi
+  if [[ -f "$SUPABASE_PROJECT_DIR/.supabase-docker-ref" ]]; then
+    local ref
+    ref="$(tr -d '[:space:]' < "$SUPABASE_PROJECT_DIR/.supabase-docker-ref" 2>/dev/null || true)"
+    if [[ "$WIPE_ENV" == "true" ]]; then
+      log "  WILL DELETE .supabase-docker-ref (当前: $ref)"
+    else
+      log "  保留 .supabase-docker-ref (当前: $ref)；保证下次部署仍用同一 Supabase docker ref"
     fi
   fi
 
@@ -186,11 +195,18 @@ remove_console_dist() {
 }
 
 handle_env_file() {
-  if [[ "$WIPE_ENV" == "true" ]] && [[ -f "$SUPABASE_PROJECT_DIR/.env" ]]; then
-    log "删除 $SUPABASE_PROJECT_DIR/.env（密钥将被重生成）"
-    run "rm -f '$SUPABASE_PROJECT_DIR/.env'"
+  if [[ "$WIPE_ENV" == "true" ]]; then
+    if [[ -f "$SUPABASE_PROJECT_DIR/.env" ]]; then
+      log "删除 $SUPABASE_PROJECT_DIR/.env（密钥将被重生成）"
+      run "rm -f '$SUPABASE_PROJECT_DIR/.env'"
+    fi
     if [[ -f "$SUPABASE_PROJECT_DIR/.env.old" ]]; then
       run "rm -f '$SUPABASE_PROJECT_DIR/.env.old'"
+    fi
+    # 仅在 --wipe-env 时一起清掉版本锁记录；正常清理保留它，重建仍指向同一 ref
+    if [[ -f "$SUPABASE_PROJECT_DIR/.supabase-docker-ref" ]]; then
+      log "删除 $SUPABASE_PROJECT_DIR/.supabase-docker-ref（下次部署按 SUPABASE_DOCKER_REF 重抓）"
+      run "rm -f '$SUPABASE_PROJECT_DIR/.supabase-docker-ref'"
     fi
   fi
 }

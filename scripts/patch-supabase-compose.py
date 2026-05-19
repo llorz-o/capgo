@@ -16,6 +16,8 @@ def resolve_compose_path(project_dir: Path) -> Path:
 
 
 def patch_compose(text: str) -> str:
+    miss: list[str] = []
+
     kong_patch = """      KONG_PROXY_ACCESS_LOG: /dev/stdout combined
       #KONG_SSL_CERT: /home/kong/server.crt"""
     kong_repl = """      KONG_PROXY_ACCESS_LOG: /dev/stdout combined
@@ -24,7 +26,10 @@ def patch_compose(text: str) -> str:
       KONG_REAL_IP_HEADER: "X-Forwarded-For"
       #KONG_SSL_CERT: /home/kong/server.crt"""
     if "KONG_PORT_MAPS" not in text:
-        text = text.replace(kong_patch, kong_repl, 1)
+        new_text = text.replace(kong_patch, kong_repl, 1)
+        if new_text == text:
+            miss.append("kong KONG_PORT_MAPS / KONG_TRUSTED_IPS / KONG_REAL_IP_HEADER")
+        text = new_text
 
     storage_patch = """      REQUEST_ALLOW_X_FORWARDED_PATH: "true"
       FILE_SIZE_LIMIT: 52428800"""
@@ -32,7 +37,10 @@ def patch_compose(text: str) -> str:
       S3_PROTOCOL_PREFIX: "/storage/v1"
       FILE_SIZE_LIMIT: 52428800"""
     if "S3_PROTOCOL_PREFIX" not in text:
-        text = text.replace(storage_patch, storage_repl, 1)
+        new_text = text.replace(storage_patch, storage_repl, 1)
+        if new_text == text:
+            miss.append("storage S3_PROTOCOL_PREFIX")
+        text = new_text
 
     funcs_old = """  functions:
     container_name: supabase-edge-functions
@@ -62,8 +70,21 @@ def patch_compose(text: str) -> str:
       - "${FUNCTIONS_PUBLIC_API_HOSTNAME}:host-gateway"
     environment:"""
 
-    if "env_file:" not in text.split("functions:")[1].split("analytics:")[0]:
-        text = text.replace(funcs_old, funcs_new, 1)
+    # 精确截取 supabase-edge-functions 服务定义块（避免 pg-functions:// 等子串误切）
+    funcs_block = ""
+    m_block = re.search(
+        r"(?ms)^  functions:\n(?:.*?)(?=^  [A-Za-z_-]+:\n|\Z)",
+        text,
+    )
+    if m_block:
+        funcs_block = m_block.group(0)
+    if "env_file:" not in funcs_block:
+        new_text = text.replace(funcs_old, funcs_new, 1)
+        if new_text == text:
+            miss.append(
+                "functions env_file / extra_hosts (检查 edge-runtime tag 是否与补丁的 v1.71.2 一致)"
+            )
+        text = new_text
 
     verify_patch = """      VERIFY_JWT: "${FUNCTIONS_VERIFY_JWT}"
     command:"""
@@ -77,7 +98,17 @@ def patch_compose(text: str) -> str:
       S3_BUCKET: capgo
     command:"""
     if "S3_ENDPOINT: kong" not in text:
-        text = text.replace(verify_patch, verify_repl, 1)
+        new_text = text.replace(verify_patch, verify_repl, 1)
+        if new_text == text:
+            miss.append("functions API_SECRET / S3_* (VERIFY_JWT 锚点未命中)")
+        text = new_text
+
+    if miss:
+        print(
+            "WARN: 以下补丁未命中（疑似上游 docker-compose.yml 结构变更，请检查 SUPABASE_DOCKER_REF）:\n  - "
+            + "\n  - ".join(miss),
+            file=sys.stderr,
+        )
 
     # 官方模板：宿主机 ${POSTGRES_PORT} 映射的是 Supavisor（连接池），不是 Postgres。
     # 宿主机 supabase db push 若连 127.0.0.1:5432 会得到 FATAL: Tenant or user not found。

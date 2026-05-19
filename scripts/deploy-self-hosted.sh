@@ -6,6 +6,9 @@
 #
 # Main env: CAPGO_REPO SUPABASE_PROJECT_DIR CONSOLE_DOMAIN SUPABASE_DOMAIN WEB_ROOT
 #   POSTGRES_DIRECT_PORT (默认 54322，直连 Postgres；勿与 Supavisor 的 ${POSTGRES_PORT} 混淆)
+#   SUPABASE_DOCKER_REF  Supabase docker/ 目录的 commit SHA / tag / branch；空 = 上游 master HEAD
+#                        建议设为 self-hosted-version-pins.zh-CN.md §2 记录的已验证 SHA，避免上游漂移
+#   CAPGO_REF            Capgo 仓库要 checkout 的 ref（默认 main，SKIP_GIT_PULL=true 时忽略）
 #   RUN_DB_PUSH RUN_DB_SEED RUN_BOOTSTRAP_PLANS RUN_BOOTSTRAP_CLI_ANON_GRANT
 #   INIT_ADMIN_* SECRETS_ENV_FILE SKIP_GIT_PULL USE_LETSENCRYPT (certbot not implemented)
 set -euo pipefail
@@ -19,6 +22,12 @@ WEB_ROOT="${WEB_ROOT:-/var/www/capgo/dist}"
 USE_LETSENCRYPT="${USE_LETSENCRYPT:-false}"
 SKIP_SUPABASE_CLONE="${SKIP_SUPABASE_CLONE:-false}"
 SKIP_GIT_PULL="${SKIP_GIT_PULL:-false}"
+# 版本锁定：避免「supabase/supabase master HEAD」漂移导致 patch 失效 / 镜像 tag 突变
+# 留空 = 跟上游 master HEAD（不推荐生产）；填具体 commit SHA / tag = 可重建快照
+SUPABASE_DOCKER_REF="${SUPABASE_DOCKER_REF:-}"
+SUPABASE_DOCKER_REPO="${SUPABASE_DOCKER_REPO:-https://github.com/supabase/supabase.git}"
+SUPABASE_REF_FILE="${SUPABASE_REF_FILE:-$SUPABASE_PROJECT_DIR/.supabase-docker-ref}"
+CAPGO_REF="${CAPGO_REF:-main}"
 RUN_DB_SEED="${RUN_DB_SEED:-false}"
 RUN_BOOTSTRAP_PLANS="${RUN_BOOTSTRAP_PLANS:-true}"
 # 恢复 anon 对 get_user_id(text) 的执行权，供 @capgo/cli login（见 supabase/self-hosted-bootstrap-cli-anon.sql）
@@ -85,15 +94,36 @@ ensure_supabase_project() {
     return
   fi
   if [[ ! -f "$SUPABASE_PROJECT_DIR/docker-compose.yml" ]]; then
-    log "克隆 Supabase docker 到 $SUPABASE_PROJECT_DIR (§3)"
     mkdir -p "$(dirname "$SUPABASE_PROJECT_DIR")"
-    git clone --depth 1 https://github.com/supabase/supabase.git /tmp/supabase-upstream
-    rsync -a /tmp/supabase-upstream/docker/ "$SUPABASE_PROJECT_DIR/"
-    rm -rf /tmp/supabase-upstream
+    local tmp ref_actual
+    tmp="$(mktemp -d)"
+    trap "rm -rf '$tmp'" RETURN
+    if [[ -n "$SUPABASE_DOCKER_REF" ]]; then
+      log "克隆 Supabase docker 到 $SUPABASE_PROJECT_DIR @ ref=$SUPABASE_DOCKER_REF (§3)"
+      git clone --filter=blob:none --no-checkout "$SUPABASE_DOCKER_REPO" "$tmp/supabase-upstream"
+      git -C "$tmp/supabase-upstream" checkout "$SUPABASE_DOCKER_REF" \
+        || die "SUPABASE_DOCKER_REF 不存在: $SUPABASE_DOCKER_REF"
+    else
+      log "克隆 Supabase docker 到 $SUPABASE_PROJECT_DIR @ master HEAD（未锁定，生产建议设 SUPABASE_DOCKER_REF）(§3)"
+      git clone --depth 1 "$SUPABASE_DOCKER_REPO" "$tmp/supabase-upstream"
+    fi
+    ref_actual="$(git -C "$tmp/supabase-upstream" rev-parse HEAD)"
+    rsync -a "$tmp/supabase-upstream/docker/" "$SUPABASE_PROJECT_DIR/"
+    printf '%s\n' "$ref_actual" > "$SUPABASE_REF_FILE"
+    log "已记录 Supabase docker ref: $ref_actual -> $SUPABASE_REF_FILE"
     if [[ -f "$SUPABASE_PROJECT_DIR/.env.example" ]] && [[ ! -f "$SECRETS_ENV_FILE" ]]; then
       cp "$SUPABASE_PROJECT_DIR/.env.example" "$SECRETS_ENV_FILE"
       log "已创建 $SECRETS_ENV_FILE — 请运行 generate-keys 并填写域名后重试"
       die "首次部署需配置 .env"
+    fi
+  else
+    if [[ -f "$SUPABASE_REF_FILE" ]] && [[ -n "$SUPABASE_DOCKER_REF" ]]; then
+      local pinned current
+      current="$(tr -d '[:space:]' < "$SUPABASE_REF_FILE")"
+      pinned="$SUPABASE_DOCKER_REF"
+      if [[ "$current" != "$pinned" && "$current" != "$pinned"* && "$pinned" != "$current"* ]]; then
+        log "提示: 已部署的 Supabase docker ref=$current 与当前 SUPABASE_DOCKER_REF=$pinned 不一致；如需重置请先跑 cleanup-self-hosted.sh"
+      fi
     fi
   fi
 }
@@ -356,7 +386,10 @@ main() {
   preflight
   [[ -d "$CAPGO_REPO" ]] || die "Capgo 仓库不存在: $CAPGO_REPO"
   if [[ "$SKIP_GIT_PULL" != "true" ]]; then
-    (cd "$CAPGO_REPO" && git fetch && git checkout main && git pull)
+    log "同步 Capgo 仓库到 ref=$CAPGO_REF"
+    (cd "$CAPGO_REPO" && git fetch --tags origin && git checkout "$CAPGO_REF" \
+      && { git rev-parse --verify --quiet "$CAPGO_REF^{commit}" >/dev/null && \
+           git symbolic-ref -q HEAD >/dev/null && git pull --ff-only origin "$CAPGO_REF" || true; })
     (cd "$CAPGO_REPO" && bun install)
   fi
   ensure_supabase_project
