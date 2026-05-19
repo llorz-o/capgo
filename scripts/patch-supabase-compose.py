@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import sys
 from pathlib import Path
 
 DEFAULT_SUPABASE_PROJECT_DIR = "/root/supabase-project"
@@ -76,6 +78,34 @@ def patch_compose(text: str) -> str:
     command:"""
     if "S3_ENDPOINT: kong" not in text:
         text = text.replace(verify_patch, verify_repl, 1)
+
+    # 官方模板：宿主机 ${POSTGRES_PORT} 映射的是 Supavisor（连接池），不是 Postgres。
+    # 宿主机 supabase db push 若连 127.0.0.1:5432 会得到 FATAL: Tenant or user not found。
+    # 为 db 容器增加仅本机绑定的直连端口，供迁移 CLI 使用（默认 54322）。
+    if "127.0.0.1:54322:5432" not in text:
+        m = re.search(
+            r"(container_name: supabase-db\n"
+            r"    image: supabase/postgres:[^\n]+\n"
+            r"    restart: unless-stopped\n)"
+            r"(    volumes:)",
+            text,
+        )
+        if m:
+            text = (
+                text[: m.start(1)]
+                + m.group(1)
+                + "    ports:\n"
+                + '      # Capgo: host -> real Postgres (avoid Supavisor on ${POSTGRES_PORT})\n'
+                + '      - "127.0.0.1:54322:5432"\n'
+                + m.group(2)
+                + text[m.end(2) :]
+            )
+        else:
+            print(
+                "WARN: 未能在 docker-compose.yml 中为 supabase-db 注入 127.0.0.1:54322:5432；"
+                "若 supabase db push 仍报 Tenant or user not found，请检查上游 compose 结构是否变更。",
+                file=sys.stderr,
+            )
 
     return text
 

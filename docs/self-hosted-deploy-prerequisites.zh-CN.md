@@ -3,13 +3,15 @@
 本文说明：**在运行 `scripts/deploy-self-hosted.sh` 之前和之后，你必须自己完成哪些事**。  
 一键脚本只负责 Docker、数据库迁移、Functions 同步、前端构建等；**不会**替你买域名、配 Nginx、申请证书。
 
-| 文档 | 路径 |
-| --- | --- |
-| 全栈部署指南（权威、含 Nginx 完整示例） | [`/root/SELF_HOSTED_FULL_STACK.zh-CN.md`](/root/SELF_HOSTED_FULL_STACK.zh-CN.md) |
-| 一键部署脚本 | [`scripts/deploy-self-hosted.sh`](../scripts/deploy-self-hosted.sh) |
-| 部署索引 | [`self-hosted-deploy-index.md`](self-hosted-deploy-index.md) |
-| **组件 / 镜像版本锁定** | [`self-hosted-version-pins.zh-CN.md`](self-hosted-version-pins.zh-CN.md) |
-| 踩坑记录 | [`issues/`](issues/) |
+
+| 文档                      | 路径                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| 全栈部署指南（权威、含 Nginx 完整示例） | `[/root/SELF_HOSTED_FULL_STACK.zh-CN.md](/root/SELF_HOSTED_FULL_STACK.zh-CN.md)` |
+| 一键部署脚本                  | `[scripts/deploy-self-hosted.sh](../scripts/deploy-self-hosted.sh)`              |
+| 部署索引                    | `[self-hosted-deploy-index.md](self-hosted-deploy-index.md)`                     |
+| **组件 / 镜像版本锁定**         | `[self-hosted-version-pins.zh-CN.md](self-hosted-version-pins.zh-CN.md)`         |
+| 踩坑记录                    | `[issues/](issues/)`                                                             |
+
 
 ---
 
@@ -17,11 +19,14 @@
 
 用一句话概括：**两台「门面」+ 一台能跑 Docker 的服务器**。
 
-| 你要准备的 | 举例 | 谁访问 |
-| --- | --- | --- |
-| **控制台域名** | `capgo.example.com` | 浏览器打开 Capgo 管理后台 |
-| **API 域名** | `supa.example.com` | 浏览器、手机 App、Capgo CLI 调接口 |
-| **服务器** | 一台 Linux VPS，公网 IP | 上面跑 Docker + Nginx |
+
+| 你要准备的                    | 举例                     | 谁访问                                             |
+| ------------------------ | ---------------------- | ----------------------------------------------- |
+| **控制台域名**                | `capgo.example.com`    | 浏览器打开 Capgo 管理后台                                |
+| **API 域名**               | `supa.example.com`     | 浏览器、手机 App、Capgo CLI 调接口                        |
+| **服务器**                  | 一台 Linux VPS，公网 IP     | 上面跑 Docker + Nginx                              |
+| **自托管 Supabase（Docker）** | 官方 Docker 模板（默认目录见 §0） | Auth、PostgreSQL、Kong、Storage、Edge Functions 运行时 |
+
 
 流量大致如下（便于理解后面 Nginx 为什么要配两个站点）：
 
@@ -31,7 +36,38 @@
 Capgo CLI  ──HTTPS──► 同上 API 域名
 ```
 
-**推荐顺序**：装软件 → 域名解析 → 证书 + Nginx → 写好 Supabase `.env` → 再跑一键脚本 → 最后按清单验收。
+**推荐顺序**：自托管 Supabase（Docker，§0）→ 装软件 → 域名解析 → 证书 + Nginx → 写好 Supabase `.env`（§6）→ 再跑一键脚本 → 最后按清单验收。
+
+---
+
+## 0. 自托管 Supabase（Docker）（第一次部署必做）
+
+### 0.1 为什么需要
+
+Capgo 自托管**依赖一个已在运行（或至少已按官方模板就绪）的自托管 Supabase（Docker 版）**：PostgreSQL、GoTrue Auth、Kong 网关、Storage、Edge Functions 等均在该栈内。  
+一键脚本 `deploy-self-hosted.sh` **不会**从零替你完成 Supabase 的安装与运维培训；它假定你在 `SUPABASE_PROJECT_DIR` 下已有 **Supabase 官方 Docker 自托管模板** 的 clone。
+
+### 0.2 怎么做
+
+1. 按 Supabase 官方文档完成 Docker 自托管安装与首次启动：
+  [Installing Supabase（Self-Hosting with Docker）](https://supabase.com/docs/guides/self-hosting/docker#installing-supabase)
+2. 将项目目录与脚本对齐（可 export，默认如下）：
+
+```bash
+export SUPABASE_PROJECT_DIR=/root/supabase-project
+```
+
+该目录应包含官方模板中的 `**docker-compose.yml**`、`**volumes/**`、`**.env.example**`（以及后续生成的 `.env`）。若你尚未 clone，请先按上述官方文档操作，**不要**在未读文档的情况下仅依赖脚本自动拉取。
+
+> **与脚本的关系**：若 `SUPABASE_PROJECT_DIR` 里还没有 `docker-compose.yml`，`deploy-self-hosted.sh` 会尝试 `git clone` 官方仓库的 `docker/` 子目录到该路径；生产环境仍建议你先按官方文档安装、理解 compose 与卷布局，再运行 Capgo 一键脚本。密钥与域名相关变量见 **§6**。
+
+### 0.3 如何验证
+
+```bash
+test -f "$SUPABASE_PROJECT_DIR/docker-compose.yml" && test -f "$SUPABASE_PROJECT_DIR/.env.example"
+cd "$SUPABASE_PROJECT_DIR" && docker compose ps
+# 期望：db、kong、auth 等核心服务为 running（或你尚未 docker compose up 时，至少目录结构与官方模板一致）
+```
 
 ---
 
@@ -39,18 +75,20 @@ Capgo CLI  ──HTTPS──► 同上 API 域名
 
 便于区分「不用管」和「必须自己做」：
 
-| 脚本会做 | 脚本不会做 |
-| --- | --- |
-| Docker 起 Supabase、打 compose 补丁 | 域名购买、DNS 解析 |
-| 跑 Capgo 数据库迁移 | Nginx 站点配置、HTTPS 证书 |
-| 建 Storage 三桶、写 Vault（密钥正确时） | 防火墙 / 安全组规则 |
-| 同步 Edge Functions（含 `translation`） | 发邮件（SMTP / Bento） |
+
+| 脚本会做                                 | 脚本不会做                |
+| ------------------------------------ | -------------------- |
+| Docker 起 Supabase、打 compose 补丁       | 域名购买、DNS 解析          |
+| 跑 Capgo 数据库迁移                        | Nginx 站点配置、HTTPS 证书  |
+| 建 Storage 三桶、写 Vault（密钥正确时）          | 防火墙 / 安全组规则          |
+| 同步 Edge Functions（含 `translation`）   | 发邮件（SMTP / Bento）    |
 | `bun build` 并把 `dist/` 拷到 `WEB_ROOT` | 完整业务验收、CLI 上传 bundle |
+
 
 默认还会执行（可用环境变量关闭）：
 
 - `RUN_BOOTSTRAP_PLANS=true`：写入套餐表，否则**无法创建组织**
-- `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`：否则 **`capgo login` / `bundle upload` 会报 RPC 42501**（见 issues/008）
+- `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`：否则 `**capgo login` / `bundle upload` 会报 RPC 42501**（见 issues/008）
 - 若设置 `INIT_ADMIN_PASSWORD`：创建平台管理员（默认邮箱 `admin@local.com`）
 
 ---
@@ -85,11 +123,13 @@ rsync --version
 
 ### 2.3 防火墙建议
 
-| 端口 | 建议 | 原因 |
-| --- | --- | --- |
-| **443** | 对公网开放 | 用户访问控制台和 API |
-| **22** | 仅你的 IP 或 VPN | SSH 管理 |
-| **8000**（Kong） | **不要**对公网开放 | 只给本机 Nginx 用 `127.0.0.1:8000` |
+
+| 端口             | 建议           | 原因                            |
+| -------------- | ------------ | ----------------------------- |
+| **443**        | 对公网开放        | 用户访问控制台和 API                  |
+| **22**         | 仅你的 IP 或 VPN | SSH 管理                        |
+| **8000**（Kong） | **不要**对公网开放  | 只给本机 Nginx 用 `127.0.0.1:8000` |
+
 
 检查 Kong 是否只监听本机（部署 Supabase 后）：
 
@@ -117,10 +157,12 @@ docker compose version && bun --version && nginx -v && python3 --version
 
 至少 **2 个子域名**，都指向**同一台服务器公网 IP**：
 
-| 记录类型 | 名称 | 值 | 用途 |
-| --- | --- | --- | --- |
-| A（或 AAAA） | `capgo` | `你的服务器 IP` | 控制台 → 对应 `capgo.example.com` |
-| A（或 AAAA） | `supa` | `同上` | API 网关 → 对应 `supa.example.com` |
+
+| 记录类型      | 名称      | 值          | 用途                             |
+| --------- | ------- | ---------- | ------------------------------ |
+| A（或 AAAA） | `capgo` | `你的服务器 IP` | 控制台 → 对应 `capgo.example.com`   |
+| A（或 AAAA） | `supa`  | `同上`       | API 网关 → 对应 `supa.example.com` |
+
 
 在域名服务商或 Cloudflare 里添加后，等待生效（通常几分钟到几小时）。
 
@@ -198,10 +240,12 @@ curl -sI https://capgo.example.com | head -1
 
 **两个 `server { }` 块**（可以放在两个文件里）：
 
-| 文件建议名 | `server_name` | 作用 |
-| --- | --- | --- |
-| `capgo.conf` | `capgo.example.com` | 静态前端 |
-| `supa.conf` | `supa.example.com` | 反代到 Kong + Studio |
+
+| 文件建议名        | `server_name`       | 作用                |
+| ------------ | ------------------- | ----------------- |
+| `capgo.conf` | `capgo.example.com` | 静态前端              |
+| `supa.conf`  | `supa.example.com`  | 反代到 Kong + Studio |
+
 
 下面用占位符 `capgo.example.com` / `supa.example.com`，请全部替换成你的域名。
 
@@ -251,10 +295,12 @@ curl -sI -k https://capgo.example.com/ | head -5
 
 **目标**：把 `https://supa.example.com` 下的各类路径转到 Kong（`127.0.0.1:8000`）。
 
-| 路径前缀 | 转到 | 说明 |
-| --- | --- | --- |
-| `/` | `http://127.0.0.1:54323` | Supabase Studio（管理界面，可选） |
-| `/auth`、`/rest`、`/storage`、`/functions`、`/realtime` 等 | `http://127.0.0.1:8000` | 经 Kong 进各服务 |
+
+| 路径前缀                                                  | 转到                       | 说明                       |
+| ----------------------------------------------------- | ------------------------ | ------------------------ |
+| `/`                                                   | `http://127.0.0.1:54323` | Supabase Studio（管理界面，可选） |
+| `/auth`、`/rest`、`/storage`、`/functions`、`/realtime` 等 | `http://127.0.0.1:8000`  | 经 Kong 进各服务              |
+
 
 **重要**：
 
@@ -267,8 +313,8 @@ proxy_buffering off;
 proxy_request_buffering off;
 ```
 
-4. **`/realtime/`** 单独一个 `location`，加 WebSocket 头（`Upgrade`、`Connection`）。
-5. **不要**在 `location` 里用 `if` 处理 OPTIONS，交给 Kong 的 CORS。
+1. `**/realtime/**` 单独一个 `location`，加 WebSocket 头（`Upgrade`、`Connection`）。
+2. **不要**在 `location` 里用 `if` 处理 OPTIONS，交给 Kong 的 CORS。
 
 **转发头模板**（每个 `proxy_pass` 到 Kong 的 location 都应包含）：
 
@@ -281,9 +327,9 @@ proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-Port  443;
 ```
 
-**完整可复制示例**见全栈文档 [**§4 反向代理**](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#4-反向代理nginx与常见故障) 与 [**附录 A.3**](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#附录-a示例配置脱敏)。
+**完整可复制示例**见全栈文档 **[§4 反向代理](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#4-反向代理nginx与常见故障)** 与 **[附录 A.3](/root/SELF_HOSTED_FULL_STACK.zh-CN.md#附录-a示例配置脱敏)**。本机已落地的两个站点配置参考 **§5.6**。
 
-> **多域名场景**：若客户端 OTA 走独立域名（external bundle），见 [`self-hosted-updater-domain.zh-CN.md`](self-hosted-updater-domain.zh-CN.md)，本文 §5 仍是基础。
+> **多域名场景**：若客户端 OTA 走独立域名（external bundle），见 `[self-hosted-updater-domain.zh-CN.md](self-hosted-updater-domain.zh-CN.md)`，本文 §5 仍是基础。
 
 **检查**：
 
@@ -298,12 +344,126 @@ curl -sk https://supa.example.com/functions/v1/ok
 
 ---
 
-### 5.5 跨域 CORS（控制台与 API 不同域名时必查）
+### 5.5 本机参考配置（直接复制改域名 / 证书）
+
+> 这两份是当前部署机上**已验证**可用的站点配置。占位说明：把 `capgo.llorz.online` / `supa.llorz.online` 换成你的域名；snakeoil 证书路径换成 certbot 自动写入的 Let's Encrypt 证书（`/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`）。
+
+#### 5.5.1 `capgo.<domain>.conf`（控制台静态站点）
+
+放置于 `/etc/nginx/sites-available/capgo.<domain>`，软链到 `sites-enabled/`，`nginx -t && systemctl reload nginx`。
+
+```nginx
+server {
+    listen 80;
+    server_name capgo.llorz.online;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name capgo.llorz.online;
+
+    # 临时自签证书；生产请换成 Let's Encrypt
+    ssl_certificate     /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+
+    client_max_body_size 50m;
+
+    root /var/www/capgo/dist;     # 与一键脚本 WEB_ROOT 一致
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;   # SPA 必需
+    }
+}
+```
+
+#### 5.5.2 `supa.<domain>.conf`（Supabase API 网关 + Studio）
+
+```nginx
+server {
+    listen 80;
+    server_name supa.llorz.online;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name supa.llorz.online;
+
+    ssl_certificate     /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+
+    client_max_body_size 100m;
+    proxy_http_version 1.1;
+
+    # 通用转发头：缺 X-Forwarded-Host/Port，预签名 URL 会带 :8000，CLI 上传失败
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Port  $server_port;
+
+    # Docker 内部 DNS，允许容器名解析（仅本机网络）
+    resolver 127.0.0.11 valid=30s;
+
+    # Supabase Studio：compose 映射 127.0.0.1:54323；勿写容器名（见 issues/005）
+    location / {
+        proxy_pass http://127.0.0.1:54323;
+        proxy_redirect off;
+    }
+
+    # Realtime（WebSocket）：仅本 location 加 Upgrade/Connection；勿在 REST/Functions 上加
+    location ~ ^/realtime/v1/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_redirect off;
+    }
+
+    # 普通 HTTP API：REST / Auth / Storage / Functions / GraphQL
+    # 关闭缓冲：HTTP/2 客户端 + 上游 HTTP/1.1 时大 POST 会卡住直到 502
+    location ~ ^/(rest|auth|storage|functions|graphql)/v1(/|$) {
+        proxy_buffering         off;
+        proxy_request_buffering off;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_redirect off;
+    }
+
+    location /.well-known/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_redirect off;
+    }
+
+    location /sso/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_redirect off;
+    }
+
+    # Supabase MCP（如 Cursor 等 MCP 客户端访问 /mcp?features=…）
+    location /mcp {
+        proxy_buffering         off;
+        proxy_request_buffering off;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_redirect off;
+    }
+}
+```
+
+> 多域名（客户端 OTA 独立域名）的额外 `update.<domain>.conf` 见 `[self-hosted-updater-domain.zh-CN.md](self-hosted-updater-domain.zh-CN.md)` §3。
+
+---
+
+### 5.7 跨域 CORS（控制台与 API 不同域名时必查）
 
 控制台在 `capgo.example.com`，接口在 `supa.example.com`，属于**跨域**。若登录或 API 报 CORS 错误：
 
 - 在 Supabase 项目的 `volumes/api/kong.yml`（或你使用的网关配置）里，允许控制台来源，例如：  
-  `https://capgo.example.com`
+`https://capgo.example.com`
 - 改完后重启 Kong：`docker compose restart kong`
 
 全栈说明见 **§3.4**。
@@ -325,7 +485,7 @@ curl -sk https://supa.example.com/functions/v1/ok
 export SUPABASE_PROJECT_DIR=/root/supabase-project
 ```
 
-若目录里没有 `docker-compose.yml`，脚本会自动 `git clone` 官方 Supabase 的 `docker/` 子目录到该路径。
+目录内应有官方 Docker 模板的 `**docker-compose.yml**`、`**volumes/**`、`**.env.example**`（安装步骤见 **§0** 与[官方 Installing Supabase 文档](https://supabase.com/docs/guides/self-hosting/docker#installing-supabase)）。若目录里没有 `docker-compose.yml`，脚本会自动 `git clone` 官方 Supabase 的 `docker/` 子目录到该路径——仍建议你先按 §0 完成自托管 Supabase，再配置本节密钥。
 
 ### 6.3 第一次生成密钥（推荐流程）
 
@@ -340,18 +500,20 @@ sh ./utils/add-new-auth-keys.sh 2>/dev/null || true
 
 再用编辑器打开 `.env`，**至少**核对下表（把 `example.com` 换成你的域名）：
 
-| 变量 | 应填什么 | 填错会怎样 |
-| --- | --- | --- |
-| `POSTGRES_PASSWORD` | 强随机密码 | 数据库不安全 |
-| `JWT_SECRET` | 脚本生成的长串 | 无法签发合法 JWT |
-| `ANON_KEY` | 脚本生成的 JWT | 前端/CLI 无法调 API |
-| `SERVICE_ROLE_KEY` | 脚本生成的 JWT | 管理员脚本、Auth Admin API 失败 |
-| `SUPABASE_PUBLIC_URL` | `https://supa.example.com` | Auth、Storage 公网地址错误 |
-| `API_EXTERNAL_URL` | 通常与上一项相同 | 部分客户端连错地址 |
-| `SITE_URL` | `https://capgo.example.com` | **登录后跳转、邮件链接错误** |
-| `KONG_HTTP_PORT` | `8000`（默认） | 与 Nginx `proxy_pass` 端口不一致会 502 |
-| `CAPGO_API_SECRET` | 自己生成一长串随机值（勿用 `CHANGE_ME`） | Vault 不写 `apikey`，后台队列不工作 |
-| `REGION` | 如 `stub`（与 compose 里 storage 一致） | CLI 上传 bundle 可能 403 |
+
+| 变量                    | 应填什么                             | 填错会怎样                           |
+| --------------------- | -------------------------------- | ------------------------------- |
+| `POSTGRES_PASSWORD`   | 强随机密码                            | 数据库不安全                          |
+| `JWT_SECRET`          | 脚本生成的长串                          | 无法签发合法 JWT                      |
+| `ANON_KEY`            | 脚本生成的 JWT                        | 前端/CLI 无法调 API                  |
+| `SERVICE_ROLE_KEY`    | 脚本生成的 JWT                        | 管理员脚本、Auth Admin API 失败         |
+| `SUPABASE_PUBLIC_URL` | `https://supa.example.com`       | Auth、Storage 公网地址错误             |
+| `API_EXTERNAL_URL`    | 通常与上一项相同                         | 部分客户端连错地址                       |
+| `SITE_URL`            | `https://capgo.example.com`      | **登录后跳转、邮件链接错误**                |
+| `KONG_HTTP_PORT`      | `8000`（默认）                       | 与 Nginx `proxy_pass` 端口不一致会 502 |
+| `CAPGO_API_SECRET`    | 自己生成一长串随机值（勿用 `CHANGE_ME`）       | Vault 不写 `apikey`，后台队列不工作       |
+| `REGION`              | 如 `stub`（与 compose 里 storage 一致） | CLI 上传 bundle 可能 403            |
+
 
 生成 `CAPGO_API_SECRET` 示例：
 
@@ -389,11 +551,13 @@ grep -E '^(SITE_URL|SUPABASE_PUBLIC_URL|CAPGO_API_SECRET|ANON_KEY)=' "$SUPABASE_
 
 ### 7.2 你必须核对的两处密钥一致性
 
-| 位置 | 变量名 | 必须与谁一致 |
-| --- | --- | --- |
-| Supabase 根目录 `.env` | `CAPGO_API_SECRET` | ↓ |
-| `volumes/functions/.env` | `API_SECRET` | 同上 |
-| Postgres Vault | secret 名 `apikey` | 同上（脚本在 `CAPGO_API_SECRET` 非 `CHANGE_ME` 时自动 `vault.create_secret`） |
+
+| 位置                       | 变量名                | 必须与谁一致                                                             |
+| ------------------------ | ------------------ | ------------------------------------------------------------------ |
+| Supabase 根目录 `.env`      | `CAPGO_API_SECRET` | ↓                                                                  |
+| `volumes/functions/.env` | `API_SECRET`       | 同上                                                                 |
+| Postgres Vault           | secret 名 `apikey`  | 同上（脚本在 `CAPGO_API_SECRET` 非 `CHANGE_ME` 时自动 `vault.create_secret`） |
+
 
 若部署时 `CAPGO_API_SECRET` 还是 `CHANGE_ME`，脚本会**跳过** Vault，你需要改好 `.env` 后手动执行（全栈 **§5.4**）或重新跑 `db_post_steps` 相关 SQL。
 
@@ -406,11 +570,13 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 
 ### 7.3 邮件（可选，不配也能登录）
 
-| 场景 | 配置位置 | 不配置的结果 |
-| --- | --- | --- |
-| 用户注册要收确认邮件 | Auth 服务 SMTP（`.env` 里 GoTrue 相关项） | 注册卡在「等邮件」 |
-| 内网快速联调 | `ENABLE_EMAIL_AUTOCONFIRM=true` | 注册后自动确认（生产慎用） |
-| 组织邀请成员 | `volumes/functions/.env` 里 `BENTO_*` | 邀请发不出去 |
+
+| 场景         | 配置位置                                 | 不配置的结果        |
+| ---------- | ------------------------------------ | ------------- |
+| 用户注册要收确认邮件 | Auth 服务 SMTP（`.env` 里 GoTrue 相关项）    | 注册卡在「等邮件」     |
+| 内网快速联调     | `ENABLE_EMAIL_AUTOCONFIRM=true`      | 注册后自动确认（生产慎用） |
+| 组织邀请成员     | `volumes/functions/.env` 里 `BENTO_*` | 邀请发不出去        |
+
 
 自托管**中文控制台**不依赖 Cloudflare AI；`translation` 由仓库内桩函数提供（见 issues/006）。
 
@@ -427,10 +593,12 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 
 ### 8.2 脚本会自动补的业务数据
 
-| 内容 | 环境变量 | 不执行时的现象 |
-| --- | --- | --- |
-| 套餐 `plans` | `RUN_BOOTSTRAP_PLANS=true`（默认） | 创建组织报 `cannot_get_plan` |
+
+| 内容         | 环境变量                                    | 不执行时的现象                                                              |
+| ---------- | --------------------------------------- | -------------------------------------------------------------------- |
+| 套餐 `plans` | `RUN_BOOTSTRAP_PLANS=true`（默认）          | 创建组织报 `cannot_get_plan`                                              |
 | CLI 权限 RPC | `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`（默认） | `login` 报 Invalid API key；`upload` 报 `get_org_perm_for_apikey` 42501 |
+
 
 ### 8.3 平台管理员（建议首次就设）
 
@@ -451,7 +619,7 @@ export INIT_ADMIN_PASSWORD='你的强密码'
 
 单独 `docker compose pull` 或 `git pull` 可能只升级某一个组件，导致预签名上传、CLI 登录、迁移与 Edge 不兼容。
 
-- 已验证版本表：[**self-hosted-version-pins.zh-CN.md**](self-hosted-version-pins.zh-CN.md)
+- 已验证版本表：**[self-hosted-version-pins.zh-CN.md](self-hosted-version-pins.zh-CN.md)**
 - 在服务器上刷新快照：
 
 ```bash
@@ -465,27 +633,64 @@ bash "$CAPGO_REPO/scripts/collect-self-hosted-versions.sh"
 ### 9.1 推荐命令
 
 ```bash
+# === 路径 ===
+# Capgo 仓库根（含 scripts/、supabase/、src/ 等）
 export CAPGO_REPO=/root/capgos/capgo
+# Supabase 官方 Docker 模板所在目录（含 docker-compose.yml、volumes/、.env）
+# 见 §0；脚本会在这里跑 patch / compose up / 写 .env
 export SUPABASE_PROJECT_DIR=/root/supabase-project
+
+# === 公网域名（必须先解析 + 证书就绪，见 §3 §4 §5）===
+# 控制台域名：浏览器访问，对应 /var/www/capgo/dist
 export CONSOLE_DOMAIN=capgo.example.com
+# Supabase API 域名：浏览器 + CLI 调 Auth/REST/Storage/Functions，反代 Kong
 export SUPABASE_DOMAIN=supa.example.com
+
+# === 静态产物输出 ===
+# 控制台 build 后的 dist 同步路径；必须与 Nginx 控制台站点的 root 一致（§5.5.1）
 export WEB_ROOT=/var/www/capgo/dist
 
-export INIT_ADMIN_PASSWORD='你的强密码'   # 建议
-export SKIP_GIT_PULL=true                 # 若代码只在本地、未推送到 git
+# === 平台管理员（可选但强烈建议）===
+# 设置后脚本会创建 Auth 用户 + public.users 行 + Vault admin_users
+export INIT_ADMIN_EMAIL=admin@local.com
+export INIT_ADMIN_PASSWORD='你的强密码'   # 勿提交 git；首次部署后立刻改
+
+# === 代码同步策略 ===
+# true = 跳过 `git fetch && git checkout main && git pull`；
+# 当 Capgo 仓库里有本地未推送的改动（例如你刚改了 migrations 或 functions）时务必开启
+export SKIP_GIT_PULL=true
 
 bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
 ```
 
+> **失败时一键清理**：迁移卡住、Vault 写错、卷数据脏了时，先跑清理脚本回到「干净状态」，再重跑部署，避免在半套库上反复修补：
+>
+> ```bash
+> # 默认保留 .env / nginx / 证书 / 仓库；只清容器 / 卷 / db data / functions 副本 / dist
+> bash "$CAPGO_REPO/scripts/cleanup-self-hosted.sh" --yes
+>
+> # 连 .env 也一起清（之后由部署脚本重新 generate-keys）
+> bash "$CAPGO_REPO/scripts/cleanup-self-hosted.sh" --yes --wipe-env
+>
+> # 看一眼会做什么、不动手
+> bash "$CAPGO_REPO/scripts/cleanup-self-hosted.sh" --dry-run
+>
+> # 再次部署
+> bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
+> ```
+
 ### 9.2 脚本常用环境变量速查
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `RUN_DB_SEED` | `false` | `true` = 跑完整 seed（**会清测试用户数据，生产慎用**） |
-| `RUN_BOOTSTRAP_PLANS` | `true` | 写入 `plans` 表 |
-| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true` | 允许 CLI `login` / `upload`（`get_user_id`、`get_org_perm_for_apikey`） |
-| `INIT_ADMIN_ENABLED` | `true` | 配合 `INIT_ADMIN_PASSWORD` 创建管理员 |
-| `USE_LETSENCRYPT` | `false` | **未实现**，勿依赖 |
+
+| 变量                             | 默认      | 说明                                                                 |
+| ------------------------------ | ------- | ------------------------------------------------------------------ |
+| `RUN_DB_SEED`                  | `false` | `true` = 跑完整 seed（**会清测试用户数据，生产慎用**）                               |
+| `RUN_BOOTSTRAP_PLANS`          | `true`  | 写入 `plans` 表                                                       |
+| `RUN_BOOTSTRAP_CLI_ANON_GRANT` | `true`  | 允许 CLI `login` / `upload`（`get_user_id`、`get_org_perm_for_apikey`） |
+| `INIT_ADMIN_ENABLED`           | `true`  | 配合 `INIT_ADMIN_PASSWORD` 创建管理员                                     |
+| `POSTGRES_DIRECT_PORT`         | `54322` | 宿主机直连 Postgres 端口（`${POSTGRES_PORT}` 是 Supavisor 池）                |
+| `USE_LETSENCRYPT`              | `false` | **未实现**，勿依赖                                                        |
+
 
 ### 9.3 若你改过本地 Capgo 代码
 
@@ -494,6 +699,16 @@ bash "$CAPGO_REPO/scripts/deploy-self-hosted.sh"
 ```bash
 export SKIP_GIT_PULL=true
 ```
+
+### 9.4 一键脚本失败排查与清理
+
+| 现象                                                                | 一般原因                                          | 处置                                                                                                                  |
+| ----------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `Tenant or user not found`                                        | `db push` 连到 Supavisor，不是真实 Postgres          | 确认补丁脚本注入了 `127.0.0.1:54322`，或设 `POSTGRES_DIRECT_PORT`                                                              |
+| `cannot drop extension uuid-ossp because other objects depend on it` | `storage.objects` 仍依赖；本仓库已不在迁移中 DROP，看是否拉了最新 | `git pull` Capgo 仓库后再跑 |
+| `must be owner of table objects` | 迁移用 `postgres` 角色无法 `ALTER storage.*` | 该 ALTER 已从迁移移除；同上 `git pull` |
+| `permission denied for function get_user_id`                      | 未跑 CLI anon bootstrap                         | 设 `RUN_BOOTSTRAP_CLI_ANON_GRANT=true`（默认 true）                                                                       |
+| 半套库 / 卷数据脏 / 想推倒重来                                                 | 之前部署半途失败                                      | `bash "$CAPGO_REPO/scripts/cleanup-self-hosted.sh" --yes` 后重跑 deploy；密钥也要重生成时加 `--wipe-env`                          |
 
 ---
 
@@ -524,10 +739,10 @@ curl -sI -k "https://${CON}/" | head -3
 
 ### 10.2 浏览器里人工测
 
-- [ ] 打开 `https://capgo.example.com/login`，用 `INIT_ADMIN_EMAIL` / 密码登录
-- [ ] 创建组织（名称 ≥ 3 个字符）
-- [ ] 创建应用（侧载选「否」）
-- [ ] 若仍白屏：硬刷新 / 清站点数据（旧 Service Worker，见 issues/006）
+- 打开 `https://capgo.example.com/login`，用 `INIT_ADMIN_EMAIL` / 密码登录
+- 创建组织（名称 ≥ 3 个字符）
+- 创建应用（侧载选「否」）
+- 若仍白屏：硬刷新 / 清站点数据（旧 Service Worker，见 issues/006）
 
 ### 10.3 Capgo CLI（在本机 App 工程目录）
 
@@ -565,6 +780,7 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 可复制打印，按顺序打勾：
 
 ```text
+□ 自托管 Supabase（Docker）：SUPABASE_PROJECT_DIR 为官方模板（§0），compose 可 up / ps 正常
 □ 服务器已装 Docker、Bun、Nginx、python3、rsync
 □ 防火墙：443 开放，8000 不对公网
 □ DNS：capgo.* 与 supa.* 指向本机 IP（dig 已验证）
@@ -574,6 +790,7 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 □ 已 export INIT_ADMIN_PASSWORD（可选但建议）
 □ 已 export CONSOLE_DOMAIN / SUPABASE_DOMAIN / CAPGO_REPO
 □ 运行 deploy-self-hosted.sh
+□ 失败时跑 cleanup-self-hosted.sh（必要时 --wipe-env）后再重跑
 □ §10 验收：ok、translation、private/config、登录、建组织
 □ （可选）CLI login + bundle upload §12.1
 ```
@@ -582,25 +799,29 @@ docker exec -i supabase-db psql -U postgres -d postgres -c \
 
 ## 12. 与 issues 的对应关系
 
-| issues | 主题 | 你要手工做的 |
-| --- | --- | --- |
-| 001 | psql 迁移单事务 | 一般不用；脚本已处理 |
-| 002 | CONCURRENTLY | 一般不用；脚本已处理 |
-| 003–004 | Functions 路由 / deno | 一般不用；脚本已同步 |
-| 005 | Studio 502 | **Nginx 用 127.0.0.1:54323**，勿写容器名 |
-| 006 | 控制台白屏 | 确认 translation；必要时硬刷新 |
-| 007 | 无法建组织 | 确认 `RUN_BOOTSTRAP_PLANS` 或手跑 bootstrap SQL |
-| 008 | CLI login / upload 42501 | 确认 `RUN_BOOTSTRAP_CLI_ANON_GRANT` 或手跑 `self-hosted-bootstrap-cli-anon.sql` |
-| 009 | 其他 CLI RPC 42501 | 对照表 [issues/009](issues/009-CLI-anon-RPC权限对照表.md)；bootstrap 已批量 GRANT |
+
+| issues  | 主题                       | 你要手工做的                                                                     |
+| ------- | ------------------------ | -------------------------------------------------------------------------- |
+| 001     | psql 迁移单事务               | 一般不用；脚本已处理                                                                 |
+| 002     | CONCURRENTLY             | 一般不用；脚本已处理                                                                 |
+| 003–004 | Functions 路由 / deno      | 一般不用；脚本已同步                                                                 |
+| 005     | Studio 502               | **Nginx 用 127.0.0.1:54323**，勿写容器名                                          |
+| 006     | 控制台白屏                    | 确认 translation；必要时硬刷新                                                      |
+| 007     | 无法建组织                    | 确认 `RUN_BOOTSTRAP_PLANS` 或手跑 bootstrap SQL                                 |
+| 008     | CLI login / upload 42501 | 确认 `RUN_BOOTSTRAP_CLI_ANON_GRANT` 或手跑 `self-hosted-bootstrap-cli-anon.sql` |
+| 009     | 其他 CLI RPC 42501         | 对照表 [issues/009](issues/009-CLI-anon-RPC权限对照表.md)；bootstrap 已批量 GRANT      |
+
 
 ---
 
 ## 13. 小结
 
-| 类别 | 谁来做 |
-| --- | --- |
-| Docker、迁移、Functions、前端 build、bootstrap SQL | **一键脚本** |
-| 域名、DNS、证书、Nginx、`.env` 生产密钥、邮件 | **你（本文 §2–§7）** |
-| 登录、建组织、CLI 上传 | **你（本文 §10 + 全栈 §11、§12.1）** |
+
+| 类别                                         | 谁来做                          |
+| ------------------------------------------ | ---------------------------- |
+| Docker、迁移、Functions、前端 build、bootstrap SQL | **一键脚本**                     |
+| 域名、DNS、证书、Nginx、`.env` 生产密钥、邮件             | **你（本文 §2–§7）**              |
+| 登录、建组织、CLI 上传                              | **你（本文 §10 + 全栈 §11、§12.1）** |
+
 
 完成 **§11 checklist** 后再跑脚本，可避免「接口 200 但控制台白屏 / 无法建组织 / CLI 登录失败」等常见问题。

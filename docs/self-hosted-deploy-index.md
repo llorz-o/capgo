@@ -34,6 +34,7 @@
 | 资源 | 路径 |
 | --- | --- |
 | 一键部署脚本 | [`scripts/deploy-self-hosted.sh`](../scripts/deploy-self-hosted.sh) |
+| 一键清理脚本（部署失败回滚） | [`scripts/cleanup-self-hosted.sh`](../scripts/cleanup-self-hosted.sh) |
 | 版本采集脚本 | [`scripts/collect-self-hosted-versions.sh`](../scripts/collect-self-hosted-versions.sh) |
 | 初始化平台管理员 | [`scripts/init-self-hosted-admin.sh`](../scripts/init-self-hosted-admin.sh) |
 | **部署前置（脚本不涵盖）** | [`self-hosted-deploy-prerequisites.zh-CN.md`](self-hosted-deploy-prerequisites.zh-CN.md) |

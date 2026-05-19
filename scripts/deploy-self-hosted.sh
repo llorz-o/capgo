@@ -5,6 +5,7 @@
 # Full guide: SELF_HOSTED_FULL_STACK.zh-CN.md (repo-adjacent or /root/ on deploy host)
 #
 # Main env: CAPGO_REPO SUPABASE_PROJECT_DIR CONSOLE_DOMAIN SUPABASE_DOMAIN WEB_ROOT
+#   POSTGRES_DIRECT_PORT (默认 54322，直连 Postgres；勿与 Supavisor 的 ${POSTGRES_PORT} 混淆)
 #   RUN_DB_PUSH RUN_DB_SEED RUN_BOOTSTRAP_PLANS RUN_BOOTSTRAP_CLI_ANON_GRANT
 #   INIT_ADMIN_* SECRETS_ENV_FILE SKIP_GIT_PULL USE_LETSENCRYPT (certbot not implemented)
 set -euo pipefail
@@ -34,6 +35,8 @@ SECRETS_ENV_FILE="${SECRETS_ENV_FILE:-$SUPABASE_PROJECT_DIR/.env}"
 FUNCTIONS_ENV_FILE="${FUNCTIONS_ENV_FILE:-$SUPABASE_PROJECT_DIR/volumes/functions/.env}"
 DB_CTN="${DB_CTN:-supabase-db}"
 KONG_PORT="${KONG_PORT:-8000}"
+# 官方 compose：${POSTGRES_PORT} 映射 Supavisor；直连 Postgres 见 patch-supabase-compose.py 暴露的 54322
+POSTGRES_DIRECT_PORT="${POSTGRES_DIRECT_PORT:-54322}"
 
 log() { printf '[deploy] %s\n' "$*"; }
 die() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -43,11 +46,26 @@ require_cmd() {
 }
 
 load_secrets() {
+  # 用 compose 风格解析 .env：按第一个 '=' 切分、取字面值，避免上游模板里
+  # 形如 STUDIO_DEFAULT_ORGANIZATION=Default Organization 的未加引号字段
+  # 在 `source` 时被 bash 当成命令执行。
   [[ -f "$SECRETS_ENV_FILE" ]] || die "未找到密钥文件: $SECRETS_ENV_FILE"
-  set -a
-  # shellcheck disable=SC1090
-  source "$SECRETS_ENV_FILE"
-  set +a
+  local line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    if [[ "${val:0:1}" == '"' && "${val: -1}" == '"' ]] || \
+       [[ "${val:0:1}" == "'" && "${val: -1}" == "'" ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+    export "$key=$val"
+  done < "$SECRETS_ENV_FILE"
 }
 
 preflight() {
@@ -80,6 +98,22 @@ ensure_supabase_project() {
   fi
 }
 
+# Compose 补丁会为 functions 挂载 env_file；首次 up 前必须存在，否则
+# "env file .../volumes/functions/.env not found"。
+ensure_functions_env_file() {
+  mkdir -p "$(dirname "$FUNCTIONS_ENV_FILE")"
+  if [[ ! -f "$FUNCTIONS_ENV_FILE" ]]; then
+    cat > "$FUNCTIONS_ENV_FILE" <<EOF
+API_SECRET=${CAPGO_API_SECRET:-CHANGE_ME}
+WEBAPP_URL=https://${CONSOLE_DOMAIN}
+SUPABASE_REPLICATE_URL=https://${SUPABASE_DOMAIN}
+CAPGO_PREVENT_BACKGROUND_FUNCTIONS=true
+EOF
+  fi
+  grep -q '^SUPABASE_REPLICATE_URL=' "$FUNCTIONS_ENV_FILE" 2>/dev/null || \
+    echo "SUPABASE_REPLICATE_URL=https://${SUPABASE_DOMAIN}" >> "$FUNCTIONS_ENV_FILE"
+}
+
 generate_keys_once() {
   if grep -q 'CHANGE_ME\|your-super-secret' "$SECRETS_ENV_FILE" 2>/dev/null; then
     log "运行 generate-keys.sh (§3)"
@@ -104,25 +138,97 @@ patch_and_up_supabase() {
   (cd "$SUPABASE_PROJECT_DIR" && docker compose up -d kong storage functions)
 }
 
+# 供 supabase CLI 连接「真实 Postgres」：须用 POSTGRES_DIRECT_PORT（见 patch），勿用 ${POSTGRES_PORT}（Supavisor）
+migration_db_url() {
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}" POSTGRES_DIRECT_PORT="${POSTGRES_DIRECT_PORT:-54322}" python3 <<'PY'
+import os
+from urllib.parse import quote_plus
+pw = os.environ.get("POSTGRES_PASSWORD") or ""
+port = os.environ.get("POSTGRES_DIRECT_PORT") or "54322"
+print(f"postgresql://postgres:{quote_plus(pw)}@127.0.0.1:{port}/postgres?sslmode=disable")
+PY
+}
+
+# psql 逐文件回退路径不会自动写迁移历史，重跑会重复执行 base.sql 等导致 "already exists"
+ensure_supabase_migration_history_table() {
+  docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (
+  version text NOT NULL PRIMARY KEY
+);
+ALTER TABLE supabase_migrations.schema_migrations
+  ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT '';
+ALTER TABLE supabase_migrations.schema_migrations
+  ADD COLUMN IF NOT EXISTS statements text[] NOT NULL DEFAULT ARRAY[]::text[];
+SQL
+}
+
+migration_version_from_filename() {
+  local base
+  base="$(basename "$1")"
+  printf '%s' "${base%%_*}"
+}
+
+is_migration_version_applied() {
+  local ver="$1"
+  local out
+  out="$(docker exec "$DB_CTN" psql -U postgres -d postgres -tAc \
+    "SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '$ver')" \
+    2>/dev/null | tr -d '[:space:]')"
+  [[ "$out" == "t" ]]
+}
+
+record_migration_applied() {
+  local ver="$1" fname="$2"
+  ver="${ver//\'/\'\'}"
+  fname="${fname//\'/\'\'}"
+  docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<SQL
+INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
+VALUES ('$ver', '$fname', ARRAY[]::text[])
+ON CONFLICT (version) DO NOTHING;
+SQL
+}
+
 apply_migrations() {
   log "数据库迁移 (§5)"
   load_secrets
-  local db_url="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/postgres?sslmode=disable"
+  local db_url
+  db_url="$(migration_db_url)"
   if [[ "$RUN_DB_PUSH" == "true" ]] && command -v supabase >/dev/null; then
-    if (cd "$CAPGO_REPO" && supabase db push --db-url "$db_url"); then
+    # PGSSLMODE：部分环境下 CLI 仍走 libpq/SSL 探测；与 URL 中 sslmode=disable 双保险
+    if (
+      cd "$CAPGO_REPO" && PGSSLMODE=disable PGGSSENCMODE=disable \
+        supabase db push --db-url "$db_url" --yes
+    ); then
       log "supabase db push 成功"
       return
     fi
     log "db push 失败，回退 psql 逐文件 (§5.2)"
   fi
+  ensure_supabase_migration_history_table
+  local drift
+  drift="$(docker exec "$DB_CTN" psql -U postgres -d postgres -tAc \
+    "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typname = 'action_type')" \
+    2>/dev/null | tr -d '[:space:]')"
+  if [[ "$drift" == "t" ]] && ! is_migration_version_applied "20250530233128"; then
+    die "库内已有 public.action_type，但迁移表未记录 20250530233128。常见原因：(1) docker compose down -v 不会删除 bind mount 的 volumes/db/data，请另执行 sudo rm -rf $SUPABASE_PROJECT_DIR/volumes/db/data 后再 up；(2) 此前 psql 回退未写迁移历史。无法安全重放 base.sql。若确认基线已完整应用，可手工向 supabase_migrations.schema_migrations 插入 version=20250530233128。"
+  fi
   local mig_dir="$CAPGO_REPO/supabase/migrations"
+  local f ver bn
   for f in $(ls -1 "$mig_dir"/*.sql | sort); do
-    log "  $(basename "$f")"
+    bn="$(basename "$f")"
+    ver="$(migration_version_from_filename "$f")"
+    if is_migration_version_applied "$ver"; then
+      log "  跳过（已记录） $bn"
+      continue
+    fi
+    log "  $bn"
     if grep -q 'CONCURRENTLY' "$f"; then
       docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$f" || die "迁移失败: $f"
     else
       docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -1 < "$f" || die "迁移失败: $f"
     fi
+    record_migration_applied "$ver" "$bn"
   done
 }
 
@@ -179,13 +285,14 @@ init_admin_user() {
 sync_functions() {
   log "同步 Edge Functions (§7)"
   local vol="$SUPABASE_PROJECT_DIR/volumes/functions"
-  mkdir -p "$vol/main"
   rsync -a --delete \
     --exclude 'deno.json' \
     "$CAPGO_REPO/supabase/functions/" "$vol/"
   rsync -a "$CAPGO_REPO/messages/" "$vol/messages/"
   cp "$CAPGO_REPO/supabase/functions/deno.json" "$vol/deno.capgo.json"
   rm -f "$vol/deno.json"
+  # main/ 不在仓库 functions 树内，若先于 rsync 创建会被 --delete 删掉
+  mkdir -p "$vol/main"
   cp "$CAPGO_REPO/scripts/templates/functions-main-index.ts" "$vol/main/index.ts"
   for d in "$vol"/*/; do
     local name=$(basename "$d")
@@ -193,17 +300,7 @@ sync_functions() {
     [[ -f "${d}index.ts" ]] || continue
     ln -sf ../deno.capgo.json "${d}deno.json"
   done
-  mkdir -p "$(dirname "$FUNCTIONS_ENV_FILE")"
-  if [[ ! -f "$FUNCTIONS_ENV_FILE" ]]; then
-    cat > "$FUNCTIONS_ENV_FILE" <<EOF
-API_SECRET=${CAPGO_API_SECRET:-CHANGE_ME}
-WEBAPP_URL=https://${CONSOLE_DOMAIN}
-SUPABASE_REPLICATE_URL=https://${SUPABASE_DOMAIN}
-CAPGO_PREVENT_BACKGROUND_FUNCTIONS=true
-EOF
-  fi
-  grep -q '^SUPABASE_REPLICATE_URL=' "$FUNCTIONS_ENV_FILE" 2>/dev/null || \
-    echo "SUPABASE_REPLICATE_URL=https://${SUPABASE_DOMAIN}" >> "$FUNCTIONS_ENV_FILE"
+  ensure_functions_env_file
   (cd "$SUPABASE_PROJECT_DIR" && docker compose up -d --force-recreate --no-deps functions)
 }
 
@@ -266,6 +363,7 @@ main() {
   if [[ -f "$SECRETS_ENV_FILE" ]]; then
     generate_keys_once
     load_secrets
+    ensure_functions_env_file
     patch_and_up_supabase
     apply_migrations
     db_post_steps
