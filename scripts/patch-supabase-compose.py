@@ -103,11 +103,16 @@ def patch_compose(text: str) -> str:
             miss.append("functions API_SECRET / S3_* (VERIFY_JWT 锚点未命中)")
         text = new_text
 
+    # 未命中必须致命：这些补丁负责给 functions 注入 env_file / API_SECRET / S3_*，
+    # 缺了容器照样能起来，故障要到运行时才暴露（且表现为难查的 5xx）。
+    # 锚点是整段字面量匹配（含 edge-runtime tag），上游 compose 一改就会落空，
+    # 所以让部署在这里停住，而不是"成功"地部署出一套坏配置。
+    # 注意：补丁均带 `if X not in text` 幂等守卫，重跑已打过补丁的 compose 不会进 miss。
     if miss:
-        print(
-            "WARN: 以下补丁未命中（疑似上游 docker-compose.yml 结构变更，请检查 SUPABASE_DOCKER_REF）:\n  - "
-            + "\n  - ".join(miss),
-            file=sys.stderr,
+        raise SystemExit(
+            "ERROR: 以下 compose 补丁未命中（疑似上游 docker-compose.yml 结构变更，"
+            "请检查 SUPABASE_DOCKER_REF）:\n  - "
+            + "\n  - ".join(miss)
         )
 
     # 官方模板：宿主机 ${POSTGRES_PORT} 映射的是 Supavisor（连接池），不是 Postgres。

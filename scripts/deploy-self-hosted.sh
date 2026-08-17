@@ -140,7 +140,11 @@ EOF
 }
 
 generate_keys_once() {
-  if grep -q 'CHANGE_ME\|your-super-secret' "$SECRETS_ENV_FILE" 2>/dev/null; then
+  # 排除 CAPGO_API_SECRET 再判断：本函数下方会写入 CAPGO_API_SECRET=CHANGE_ME 占位，
+  # 若纳入哨兵匹配，第二次部署会误判「密钥未生成」而重跑 generate-keys.sh，
+  # 导致 JWT_SECRET / ANON_KEY / SERVICE_ROLE_KEY 被轮换、已构建的控制台与 CLI 全部失效。
+  if grep -v '^[[:space:]]*CAPGO_API_SECRET=' "$SECRETS_ENV_FILE" 2>/dev/null \
+     | grep -q 'CHANGE_ME\|your-super-secret'; then
     log "运行 generate-keys.sh (§3)"
     (cd "$SUPABASE_PROJECT_DIR" && sh ./utils/generate-keys.sh)
     (cd "$SUPABASE_PROJECT_DIR" && sh ./utils/add-new-auth-keys.sh 2>/dev/null || true)
@@ -269,9 +273,29 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 SQL
   if [[ -n "${CAPGO_API_SECRET:-}" ]] && [[ "$CAPGO_API_SECRET" != "CHANGE_ME" ]]; then
+    # vault.secrets.name 唯一：create_secret 重跑会报错，在 ON_ERROR_STOP=1 下会中断
+    # 整个部署（后续 sync_functions / build_console 都不会执行）。按名字 upsert，
+    # 同时让轮换后的 CAPGO_API_SECRET 能被带上。单引号转义同 record_migration_applied。
+    local api_secret_sql="${CAPGO_API_SECRET//\'/\'\'}"
     docker exec -i "$DB_CTN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<SQL
-SELECT vault.create_secret('http://kong:8000', 'db_url', 'pg_net -> Kong');
-SELECT vault.create_secret('${CAPGO_API_SECRET}', 'apikey', 'queue_consumer apisecret');
+DO \$\$
+DECLARE
+  v_id uuid;
+BEGIN
+  SELECT id INTO v_id FROM vault.secrets WHERE name = 'db_url' LIMIT 1;
+  IF v_id IS NULL THEN
+    PERFORM vault.create_secret('http://kong:8000', 'db_url', 'pg_net -> Kong');
+  ELSE
+    PERFORM vault.update_secret(v_id, 'http://kong:8000');
+  END IF;
+
+  SELECT id INTO v_id FROM vault.secrets WHERE name = 'apikey' LIMIT 1;
+  IF v_id IS NULL THEN
+    PERFORM vault.create_secret('${api_secret_sql}', 'apikey', 'queue_consumer apisecret');
+  ELSE
+    PERFORM vault.update_secret(v_id, '${api_secret_sql}');
+  END IF;
+END \$\$;
 SQL
   else
     log "跳过 Vault apikey：请在 .env 设置 CAPGO_API_SECRET 后手动 vault.create_secret (§5.4)"
