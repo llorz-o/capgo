@@ -29,8 +29,11 @@ Deno.serve(async (req: Request) => {
   try {
     const worker = await EdgeRuntime.userWorkers.create({
       servicePath,
-      memoryLimitMb: 150,
-      workerTimeoutMs: 60 * 1000,
+      // 4c8g 自托管：60s 回收会让 worker 每分钟集体重建，
+      // 并发 spawn isolate 抢满 CPU 后触发 InvalidWorkerCreation → 504。
+      // 拉长存活周期以降低冷启动频率；上游 Supabase 模板默认即 5 分钟。
+      memoryLimitMb: 256,
+      workerTimeoutMs: 10 * 60 * 1000,
       noModuleCache: false,
       importMapPath,
       envVars,
